@@ -8,7 +8,7 @@ import { notFound, errorHandler } from "./utils/errorHandler";
 
 // Route imports (leave them even if empty for now)
 
-import userRoutes from "./routes/userRoutes";/*
+import userRoutes from "./routes/userRoutes";
 import bookingRoutes from "./routes/bookingRoutes";
 import hostelRoutes from "./routes/hostelRoutes";
 import roomRoutes from "./routes/roomRoutes";
@@ -19,7 +19,7 @@ import feedbackRoutes from "./routes/feedbackRoutes";
 import complaintRoutes from "./routes/complaintRoutes";
 import noticeRoutes from "./routes/noticeRoutes";
 import reportRoutes from "./routes/reportRoutes";
-*/
+
 
 const app = express();
 
@@ -37,7 +37,7 @@ app.get("/ready", (_req, res) => {
 
 // API routes (prefix all)
 
-app.use("/api/users", userRoutes);/*
+app.use("/api/users", userRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/hostels", hostelRoutes);
 app.use("/api/rooms", roomRoutes);
@@ -48,7 +48,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/complaints", complaintRoutes);
 app.use("/api/notices", noticeRoutes);
 app.use("/api/reports", reportRoutes);
-*/
+
 
 // 404 + error handler
 app.use(notFound);
