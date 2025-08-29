@@ -1,10 +1,14 @@
-import { Request, Response, NextFunction } from 'express';
-import httpErrors from 'http-errors';
+import { NextFunction, Request, Response } from "express";
+import logger from "./logger";
 
-export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
-  if (httpErrors.isHttpError(err)) {
-    res.status(err.status).json({ error: err.message });
-  } else {
-    res.status(500).json({ error: 'Internal server error' });
-  }
-};
+export function notFound(_req: Request, res: Response) {
+  res.status(404).json({ message: "Route not found" });
+}
+
+export function errorHandler(err: any, _req: Request, res: Response, _next: NextFunction) {
+  logger.error({ err }, "Unhandled error");
+  const status = err.status || 500;
+  res.status(status).json({
+    message: err.message || "Internal Server Error"
+  });
+}
