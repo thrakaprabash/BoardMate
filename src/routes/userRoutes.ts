@@ -1,4 +1,3 @@
-// src/routes/userRoutes.ts
 import { Router } from "express";
 import {
   createUser,
@@ -9,7 +8,7 @@ import {
   activateUser,
   deleteUser,
 } from "../controllers/userController";
-import { requireAuth, requireHostelOwner } from "../middleware/auth";
+
 import {
   validate,
   createUserSchema,
@@ -18,51 +17,35 @@ import {
   paramIdSchema,
 } from "../middleware/validation";
 
+// Use your real auth middleware if already implemented
+import { requireAuth } from "../middleware/auth";
+// If you also want role-based guards later, you can import requireRole
+
 const router = Router();
 
-// List users (auth required)
+/** LIST (auth) */
 router.get("/", requireAuth, validate(listUsersQuerySchema, "query"), listUsers);
 
-// Create user (hostel_owner)
-router.post("/", requireAuth, requireHostelOwner, validate(createUserSchema), createUser);
+/** CREATE (PUBLIC) -> no token required for easy registration/testing */
+router.post("/", validate(createUserSchema), createUser);
 
-// Get user by id
+/** READ (auth) */
 router.get("/:id", requireAuth, validate(paramIdSchema, "params"), getUserById);
 
-// Update user (hostel_owner)
+/** UPDATE (auth) */
 router.patch(
   "/:id",
   requireAuth,
-  requireHostelOwner,
   validate(paramIdSchema, "params"),
   validate(updateUserSchema),
   updateUser
 );
 
-// Deactivate / Activate (hostel_owner)
-router.patch(
-  "/:id/deactivate",
-  requireAuth,
-  requireHostelOwner,
-  validate(paramIdSchema, "params"),
-  deactivateUser
-);
+/** DEACTIVATE / ACTIVATE (auth) */
+router.patch("/:id/deactivate", requireAuth, validate(paramIdSchema, "params"), deactivateUser);
+router.patch("/:id/activate", requireAuth, validate(paramIdSchema, "params"), activateUser);
 
-router.patch(
-  "/:id/activate",
-  requireAuth,
-  requireHostelOwner,
-  validate(paramIdSchema, "params"),
-  activateUser
-);
-
-// Delete user (hostel_owner)
-router.delete(
-  "/:id",
-  requireAuth,
-  requireHostelOwner,
-  validate(paramIdSchema, "params"),
-  deleteUser
-);
+/** DELETE (auth) */
+router.delete("/:id", requireAuth, validate(paramIdSchema, "params"), deleteUser);
 
 export default router;
