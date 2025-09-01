@@ -19,6 +19,7 @@ import feedbackRoutes from "./routes/feedbackRoutes";
 import complaintRoutes from "./routes/complaintRoutes";
 import noticeRoutes from "./routes/noticeRoutes";
 import reportRoutes from "./routes/reportRoutes";
+import authRoutes from "./routes/authRoutes";
 
 
 const app = express();
@@ -36,7 +37,7 @@ app.get("/ready", (_req, res) => {
 });
 
 // API routes (prefix all)
-
+app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/hostels", hostelRoutes);
