@@ -1,1026 +1,871 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { 
-  Building2, 
-  Bed, 
-  Calendar, 
-  CreditCard, 
-  CheckCircle, 
-  XCircle, 
-  Star,
-  MessageSquare,
-  Bell,
-  Search,
-  MapPin,
-  Users,
-  Wifi,
-  Car,
-  Utensils,
-  Shield,
-  Filter,
-  ArrowRight,
-  ArrowLeft,
-  Eye,
-  Edit,
-  Trash2,
-  DollarSign,
-  Clock
-} from 'lucide-react';
+// src/pages/student/StudentDashboard.jsx
+import { useEffect, useMemo, useState } from "react"
+import { Link } from "react-router-dom"
+import AppLayout from "../../layouts/AppLayout"
+import StatCard from "../../components/StatCard"
+import DataTable from "../../components/DataTable"
+import Section from "../../components/Section"
+import { useAuth } from "../../context/AuthContext"
+import api from "../../services/api"
 
-// Mock API service
-const api = {
-  get: async (url, config) => {
-    // Mock data based on URL
-    if (url === '/hostels') {
-      return {
-        data: [
-          { 
-            _id: '1', 
-            name: 'Grand View Hostel', 
-            location: 'Colombo 03',
-            rating: 4.5,
-            amenities: ['wifi', 'parking', 'meals', 'security'],
-            price_range: '15000-25000',
-            image: 'https://images.pexels.com/photos/271618/pexels-photo-271618.jpeg'
-          },
-          { 
-            _id: '2', 
-            name: 'City Center Hostel', 
-            location: 'Colombo 01',
-            rating: 4.2,
-            amenities: ['wifi', 'meals', 'security'],
-            price_range: '12000-20000',
-            image: 'https://images.pexels.com/photos/271624/pexels-photo-271624.jpeg'
-          },
-          { 
-            _id: '3', 
-            name: 'Campus View Hostel', 
-            location: 'Moratuwa',
-            rating: 4.8,
-            amenities: ['wifi', 'parking', 'meals', 'security', 'gym'],
-            price_range: '18000-28000',
-            image: 'https://images.pexels.com/photos/323780/pexels-photo-323780.jpeg'
-          }
-        ]
-      };
-    }
-    
-    if (url.includes('/rooms')) {
-      const hostelId = url.split('/')[2] || '1';
-      return {
-        data: [
-          { 
-            _id: `r1_${hostelId}`, 
-            name: 'Single Room A101', 
-            type: 'Single',
-            capacity: 1,
-            rent: 18000,
-            availability_status: true,
-            amenities: ['AC', 'Attached Bathroom', 'Study Table'],
-            description: 'Comfortable single room with all basic amenities'
-          },
-          { 
-            _id: `r2_${hostelId}`, 
-            name: 'Double Room B201', 
-            type: 'Double',
-            capacity: 2,
-            rent: 15000,
-            availability_status: true,
-            amenities: ['AC', 'Shared Bathroom', 'Study Tables'],
-            description: 'Spacious double room perfect for sharing'
-          },
-          { 
-            _id: `r3_${hostelId}`, 
-            name: 'Triple Room C301', 
-            type: 'Triple',
-            capacity: 3,
-            rent: 12000,
-            availability_status: false,
-            amenities: ['Fan', 'Shared Bathroom', 'Study Tables'],
-            description: 'Budget-friendly triple occupancy room'
-          }
-        ]
-      };
-    }
-    
-    if (url === '/bookings') {
-      return {
-        data: [
-          {
-            _id: 'b1',
-            room_id: 'r1_1',
-            hostel_id: '1',
-            start_date: '2025-01-15',
-            end_date: '2025-06-15',
-            status: 'confirmed',
-            payment_status: 'pending',
-            amount: 18000
-          },
-          {
-            _id: 'b2',
-            room_id: 'r2_2',
-            hostel_id: '2',
-            start_date: '2025-02-01',
-            end_date: '2025-07-01',
-            status: 'pending',
-            payment_status: 'paid',
-            amount: 15000
-          }
-        ]
-      };
-    }
-    
-    if (url === '/finance') {
-      return {
-        data: [
-          {
-            _id: 'p1',
-            booking_id: 'b1',
-            amount: 18000,
-            method: 'card',
-            status: 'paid',
-            date: '2025-01-01',
-            can_cancel: true
-          },
-          {
-            _id: 'p2',
-            booking_id: 'b2',
-            amount: 15000,
-            method: 'bank',
-            status: 'pending',
-            date: '2025-01-02',
-            can_cancel: false
-          }
-        ]
-      };
-    }
-    
-    return { data: [] };
-  },
-  
-  post: async (url, data) => {
-    console.log('POST', url, data);
-    return { data: { success: true, _id: Date.now().toString() } };
-  },
-  
-  patch: async (url, data) => {
-    console.log('PATCH', url, data);
-    return { data: { success: true } };
+// ---------- helpers ----------
+const fmtD = (d) => (d ? new Date(d).toLocaleDateString() : "--")
+const todayISO = () => new Date().toISOString().slice(0, 10)
+const addDaysISO = (n) => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10) }
+const getArr = (res) => res?.data?.data ?? res?.data?.items ?? res?.data ?? []
+const isPaid = (s) => ["paid", "completed", "success"].includes(String(s || "").toLowerCase())
+const fmtAmt = (n) => (n == null ? "--" : `LKR ${Number(n).toLocaleString()}`)
+
+// tiny GET-with-fallback helper used by ensureRoom/ensureHostel
+async function safeGet(paths) {
+  for (const p of paths) {
+    try {
+      const { data } = await api.get(p)
+      if (data) return data
+    } catch {}
   }
-};
-
-// Helper functions
-const fmtD = (d) => (d ? new Date(d).toLocaleDateString() : "--");
-const fmtAmt = (n) => (n == null ? "--" : `LKR ${Number(n).toLocaleString()}`);
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const addDaysISO = (n) => { 
-  const x = new Date(); 
-  x.setDate(x.getDate() + n); 
-  return x.toISOString().slice(0, 10);
-};
-
-// Mock user context
-const useAuth = () => ({
-  user: { _id: 'user123', name: 'John Doe', email: 'john@example.com' }
-});
-
-// Components
-function StatCard({ title, value, icon: Icon, color = 'blue' }) {
-  const colorClasses = {
-    blue: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
-    green: 'bg-green-500/10 border-green-500/20 text-green-400',
-    orange: 'bg-orange-500/10 border-orange-500/20 text-orange-400',
-    purple: 'bg-purple-500/10 border-purple-500/20 text-purple-400'
-  };
-
-  return (
-    <div className={`rounded-2xl border p-6 ${colorClasses[color]} backdrop-blur-sm`}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm opacity-80">{title}</p>
-          <p className="text-2xl font-bold mt-1">{value}</p>
-        </div>
-        {Icon && <Icon className="h-8 w-8 opacity-60" />}
-      </div>
-    </div>
-  );
+  return null
 }
 
-function Modal({ open, title, onClose, children, size = 'default' }) {
-  if (!open) return null;
-  
-  const sizeClasses = {
-    default: 'max-w-lg',
-    large: 'max-w-4xl',
-    small: 'max-w-md'
-  };
+// ---------- Local CSS (dark inputs/selects/buttons/table) ----------
+const LocalCss = () => (
+  <style>{`
+    .btn-primary { background:#111827; color:#fff; }
+    .btn-primary:hover { background:#0f172a; }
+    .btn-ghost  { border:1px solid rgba(255,255,255,.2); background:transparent; color:#fff; }
+    .btn-ghost:hover { background:rgba(255,255,255,.08); }
+    .btn-soft { background:rgba(255,255,255,.20); color:#fff; backdrop-filter: blur(6px); }
+    .btn-soft:hover { background:rgba(255,255,255,.28); }
 
+    .input-dark { background:rgba(255,255,255,.10); color:#fff; border:1px solid rgba(255,255,255,.2); }
+    .input-dark::placeholder { color:rgba(255,255,255,.7); }
+    .select-dark option { background:#0b1220; color:#fff; }
+    .card-glass { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.15); }
+    .table-dark thead { background:rgba(255,255,255,.06); color:#fff; }
+    .table-dark td, .table-dark th { border-color: rgba(255,255,255,.08); }
+    .notice-box { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.15) }
+    .modal-backdrop { background: rgba(0,0,0,.5); }
+    .modal-panel { background: rgba(17,24,39,.95); color:#fff; border:1px solid rgba(255,255,255,.12); }
+    .chip { border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); color:#fff; }
+  `}</style>
+)
+
+// ---------- UI ----------
+function Modal({ open, title, onClose, children }) {
+  if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className={`w-full ${sizeClasses[size]} bg-gray-900/95 border border-white/10 rounded-2xl shadow-2xl overflow-hidden`}>
-        <div className="flex items-center justify-between border-b border-white/10 p-6">
-          <h3 className="text-xl font-semibold text-white">{title}</h3>
-          <button 
-            onClick={onClose} 
-            className="text-white/70 hover:text-white hover:bg-white/10 p-2 rounded-lg transition-colors"
-          >
-            <XCircle className="h-5 w-5" />
-          </button>
+    <div className="fixed inset-0 z-50 grid place-items-center modal-backdrop p-4">
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl modal-panel shadow-xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+          <h3 className="text-lg font-semibold">{title}</h3>
+          <button onClick={onClose} className="rounded px-2 py-1 text-sm text-white/70 hover:bg-white/10">Close</button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-5">{children}</div>
       </div>
     </div>
-  );
-}
-
-function Button({ variant = 'primary', size = 'default', children, className = '', ...props }) {
-  const variants = {
-    primary: 'bg-blue-600 hover:bg-blue-700 text-white border-transparent',
-    secondary: 'bg-white/10 hover:bg-white/20 text-white border-white/20',
-    outline: 'border-white/30 hover:bg-white/10 text-white bg-transparent',
-    success: 'bg-green-600 hover:bg-green-700 text-white border-transparent',
-    danger: 'bg-red-600 hover:bg-red-700 text-white border-transparent'
-  };
-  
-  const sizes = {
-    sm: 'px-3 py-1.5 text-sm',
-    default: 'px-4 py-2',
-    lg: 'px-6 py-3 text-lg'
-  };
-
-  return (
-    <button 
-      className={`border rounded-xl font-medium transition-all duration-200 ${variants[variant]} ${sizes[size]} ${className}`}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
-function HostelCard({ hostel, onSelect, selected = false }) {
-  const amenityIcons = {
-    wifi: Wifi,
-    parking: Car,
-    meals: Utensils,
-    security: Shield
-  };
-
-  return (
-    <div 
-      onClick={() => onSelect(hostel)}
-      className={`rounded-2xl border backdrop-blur-sm cursor-pointer transition-all duration-300 hover:scale-105 ${
-        selected 
-          ? 'border-blue-500/50 bg-blue-500/10 ring-2 ring-blue-500/30' 
-          : 'border-white/10 bg-white/5 hover:border-white/20'
-      }`}
-    >
-      <div className="aspect-video rounded-t-2xl overflow-hidden">
-        <img 
-          src={hostel.image} 
-          alt={hostel.name}
-          className="w-full h-full object-cover"
-        />
-      </div>
-      <div className="p-6">
-        <div className="flex items-start justify-between mb-3">
-          <h3 className="text-lg font-semibold text-white">{hostel.name}</h3>
-          <div className="flex items-center gap-1 text-yellow-400">
-            <Star className="h-4 w-4 fill-current" />
-            <span className="text-sm">{hostel.rating}</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-1 text-white/70 mb-3">
-          <MapPin className="h-4 w-4" />
-          <span className="text-sm">{hostel.location}</span>
-        </div>
-        <div className="flex flex-wrap gap-2 mb-4">
-          {hostel.amenities.slice(0, 4).map((amenity) => {
-            const Icon = amenityIcons[amenity] || Shield;
-            return (
-              <div key={amenity} className="flex items-center gap-1 px-2 py-1 bg-white/10 rounded-lg">
-                <Icon className="h-3 w-3" />
-                <span className="text-xs capitalize">{amenity}</span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="text-right">
-          <span className="text-lg font-bold text-green-400">{hostel.price_range}</span>
-          <span className="text-sm text-white/70 ml-1">LKR/month</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function RoomCard({ room, onSelect, onBook }) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur-sm hover:border-white/20 transition-all duration-300">
-      <div className="p-6">
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-1">{room.name}</h3>
-            <p className="text-white/70 text-sm">{room.description}</p>
-          </div>
-          <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-            room.availability_status 
-              ? 'bg-green-500/20 text-green-400' 
-              : 'bg-red-500/20 text-red-400'
-          }`}>
-            {room.availability_status ? 'Available' : 'Occupied'}
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-white/70" />
-            <span className="text-sm text-white/70">Capacity: {room.capacity}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Bed className="h-4 w-4 text-white/70" />
-            <span className="text-sm text-white/70">{room.type}</span>
-          </div>
-        </div>
-        
-        <div className="flex flex-wrap gap-2 mb-4">
-          {room.amenities.map((amenity, idx) => (
-            <span key={idx} className="px-2 py-1 bg-white/10 rounded text-xs">
-              {amenity}
-            </span>
-          ))}
-        </div>
-        
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-2xl font-bold text-green-400">LKR {room.rent.toLocaleString()}</span>
-            <span className="text-sm text-white/70 ml-1">/month</span>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => onSelect(room)}>
-              <Eye className="h-4 w-4 mr-1" />
-              View Details
-            </Button>
-            {room.availability_status && (
-              <Button size="sm" onClick={() => onBook(room)}>
-                Book Now
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  )
 }
 
 export default function StudentDashboard() {
-  const { user } = useAuth();
-  
-  // Data states
-  const [hostels, setHostels] = useState([]);
-  const [rooms, setRooms] = useState([]);
-  const [bookings, setBookings] = useState([]);
-  const [payments, setPayments] = useState([]);
-  
-  // UI states
-  const [currentStep, setCurrentStep] = useState(1);
-  const [selectedHostel, setSelectedHostel] = useState(null);
-  const [selectedRoom, setSelectedRoom] = useState(null);
-  const [loading, setLoading] = useState(false);
-  
-  // Modal states
-  const [showBookingWizard, setShowBookingWizard] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showRoomDetails, setShowRoomDetails] = useState(false);
-  const [showPaymentHistory, setShowPaymentHistory] = useState(false);
-  
-  // Form states
-  const [bookingForm, setBookingForm] = useState({
+  const { user } = useAuth()
+  const userId = user?._id || user?.id || null
+
+  // ---------- data ----------
+  const [hostels, setHostels] = useState([])
+  const [rooms, setRooms] = useState([])
+  const [bookings, setBookings] = useState([])
+  const [payments, setPayments] = useState([])
+  const [notices, setNotices] = useState([])
+
+  // small caches for labels
+  const [roomMap, setRoomMap] = useState({})     // id -> room object
+  const [hostelMap, setHostelMap] = useState({}) // id -> hostel object
+
+  // ---------- ensure helpers (fetch & cache missing entities) ----------
+  const ensureHostel = async (hostelId) => {
+    if (!hostelId || hostelMap[hostelId]) return
+    const data = await safeGet([`/hostels/${hostelId}`, `/hostel/${hostelId}`])
+    if (data) setHostelMap(m => ({ ...m, [hostelId]: data }))
+    else setHostelMap(m => ({ ...m, [hostelId]: { _id: hostelId, name: `Hostel ${String(hostelId).slice(-6)}` }}))
+  }
+
+  const ensureRoom = async (roomId) => {
+    if (!roomId || roomMap[roomId]) return
+    const data = await safeGet([`/rooms/${roomId}`, `/room/${roomId}`])
+    if (data) {
+      setRoomMap(m => ({ ...m, [roomId]: data }))
+      const hid = data.hostel || data.hostel_id || data.hostelId
+      if (hid) ensureHostel(hid)
+    } else {
+      setRoomMap(m => ({ ...m, [roomId]: { _id: roomId, name: `Room ${String(roomId).slice(-6)}` }}))
+    }
+  }
+
+  // ---------- messages ----------
+  const [ok, setOk] = useState("")
+  const [err, setErr] = useState("")
+  const toast = (m, isErr = false) => {
+    setOk(isErr ? "" : m)
+    setErr(isErr ? m : "")
+    setTimeout(() => { setOk(""); setErr("") }, 2200)
+  }
+
+  // ---------- modals ----------
+  const [showBook, setShowBook] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
+  const [showFeedback, setShowFeedback] = useState(false)
+  const [showComplaint, setShowComplaint] = useState(false)
+  const [showPay, setShowPay] = useState(false)
+
+  // ---------- forms ----------
+  const [bookForm, setBookForm] = useState({
+    hostel_id: "",
+    room_id: "",
     start_date: todayISO(),
     end_date: addDaysISO(30),
-  });
-  const [paymentForm, setPaymentForm] = useState({
-    amount: '',
-    method: 'card',
-    booking_id: ''
-  });
-  
-  // Messages
-  const [message, setMessage] = useState({ text: '', type: '' });
+  })
+  const [editForm, setEditForm] = useState({ id: "", start_date: todayISO(), end_date: addDaysISO(30) })
+  const [feedbackForm, setFeedbackForm] = useState({ comments: "", rating: 5, room_id: "" })
+  const [complaintForm, setComplaintForm] = useState({ subject: "", description: "", room_id: "" })
+  const [payForm, setPayForm] = useState({ booking_id: "", amount: "", method: "card" })
 
-  const showMessage = (text, type = 'success') => {
-    setMessage({ text, type });
-    setTimeout(() => setMessage({ text: '', type: '' }), 3000);
-  };
+  // ---------- loading flags ----------
+  const [loadingHostels, setLoadingHostels] = useState(false)
+  const [loadingRooms, setLoadingRooms] = useState(false)
 
-  // Load data
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
+  // ---------- generic fetch with fallbacks ----------
+  const fetchWithParamFallback = async (url, baseParams, variants = []) => {
+    try {
+      const res = await api.get(url, baseParams ? { params: baseParams } : undefined)
+      const arr = getArr(res)
+      if (Array.isArray(arr)) return arr
+    } catch {}
+    for (const v of variants) {
       try {
-        const [hostelsRes, bookingsRes, paymentsRes] = await Promise.all([
-          api.get('/hostels'),
-          api.get('/bookings'),
-          api.get('/finance')
-        ]);
-        
-        setHostels(hostelsRes.data || []);
-        setBookings(bookingsRes.data || []);
-        setPayments(paymentsRes.data || []);
-      } catch (error) {
-        showMessage('Failed to load data', 'error');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadData();
-  }, []);
-
-  // Load rooms when hostel is selected
-  useEffect(() => {
-    if (selectedHostel) {
-      const loadRooms = async () => {
-        setLoading(true);
-        try {
-          const roomsRes = await api.get(`/hostels/${selectedHostel._id}/rooms`);
-          setRooms(roomsRes.data || []);
-        } catch (error) {
-          showMessage('Failed to load rooms', 'error');
-        } finally {
-          setLoading(false);
-        }
-      };
-      
-      loadRooms();
+        const res = await api.get(url, v ? { params: v } : undefined)
+        const arr = getArr(res)
+        if (Array.isArray(arr)) return arr
+      } catch {}
     }
-  }, [selectedHostel]);
+    return []
+  }
 
-  // Stats
+  // ---------- robust hostel loader ----------
+  const loadHostels = async () => {
+    setLoadingHostels(true)
+    const tryGet = async (path) => {
+      try {
+        const res = await api.get(path)
+        const arr = getArr(res)
+        if (Array.isArray(arr)) return arr
+      } catch {}
+      return null
+    }
+    const tryPost = async (path, body) => {
+      try {
+        const res = await api.post(path, body)
+        const arr = getArr(res)
+        if (Array.isArray(arr)) return arr
+      } catch {}
+      return null
+    }
+    const PATHS = ["/hostels", "/hostels/list", "/hostels/all", "/hostel/list", "/hostel/all"]
+    for (const p of PATHS) {
+      const r = await tryGet(p)
+      if (r) { setLoadingHostels(false); return r }
+    }
+    const POSTS = [
+      { path: "/hostels/search", body: { status: "active" } },
+      { path: "/hostel/search", body: { status: "active" } },
+      { path: "/hostels/query", body: {} },
+    ]
+    for (const t of POSTS) {
+      const r = await tryPost(t.path, t.body)
+      if (r) { setLoadingHostels(false); return r }
+    }
+    setLoadingHostels(false)
+    return []
+  }
+
+  // ---------- robust rooms loader ----------
+  const loadRoomsForHostel = async (hostelId, start_date, end_date) => {
+    setLoadingRooms(true)
+    if (!hostelId) { setLoadingRooms(false); return [] }
+    const tryGet = async (path, params) => {
+      try {
+        const res = await api.get(path, params ? { params } : undefined)
+        const arr = getArr(res)
+        if (Array.isArray(arr)) return arr
+      } catch {}
+      return null
+    }
+    const tryPost = async (path, body) => {
+      try {
+        const res = await api.post(path, body)
+        const arr = getArr(res)
+        if (Array.isArray(arr)) return arr
+      } catch {}
+      return null
+    }
+    const PATH_TRIES = [
+      `/hostels/${hostelId}/rooms`,
+      `/rooms/hostel/${hostelId}`,
+      `/rooms/by-hostel/${hostelId}`,
+      `/hostel/${hostelId}/rooms`,
+    ]
+    for (const p of PATH_TRIES) {
+      const got = await tryGet(p)
+      if (got) { setLoadingRooms(false); return got }
+    }
+    const baseBody = { hostel_id: hostelId, start_date, end_date, availability_status: true }
+    const POST_TRIES = [
+      { path: "/rooms/search", body: baseBody },
+      { path: "/rooms/find",   body: baseBody },
+      { path: "/rooms/query",  body: baseBody },
+      { path: "/rooms",        body: baseBody },
+    ]
+    for (const t of POST_TRIES) {
+      const got = await tryPost(t.path, t.body)
+      if (got) { setLoadingRooms(false); return got }
+    }
+    const all = await tryGet("/rooms")
+    if (all) {
+      const hid = String(hostelId)
+      const filtered = all.filter(r =>
+        [r.hostel, r.hostel_id, r.hostelId]?.some(v => String(v) === hid)
+      )
+      setLoadingRooms(false)
+      return filtered
+    }
+    setLoadingRooms(false)
+    return []
+  }
+
+  // ---------- initial load ----------
+  const loadAll = async () => {
+    try {
+      const hs = await loadHostels()
+      setHostels(hs)
+      const hm = {}
+      hs.forEach(h => { const id = h._id || h.id; if (id) hm[id] = h })
+      setHostelMap(hm)
+
+      const defaultHostel = bookForm.hostel_id || hs[0]?._id || hs[0]?.id || ""
+
+      const r = await loadRoomsForHostel(defaultHostel, bookForm.start_date, bookForm.end_date)
+      setRooms(r)
+      const rm = {}
+      r.forEach(x => { const id = x._id || x.id; if (id) rm[id] = x })
+      setRoomMap(m => ({ ...rm, ...m })) // keep any previously ensured entries
+
+      const b = await fetchWithParamFallback(
+        "/bookings",
+        { user: userId, limit: 50, sort: "-createdAt" },
+        [
+          { user_id: userId, limit: 50, sort: "-createdAt" },
+          { student: userId, limit: 50, sort: "-createdAt" },
+          { createdBy: userId, limit: 50, sort: "-createdAt" },
+          { limit: 50, sort: "-createdAt" },
+        ]
+      )
+      setBookings(b)
+
+      // prime caches for any bookings that only contain ids
+      const roomIds = new Set((b || []).map(x => x.room_id).filter(Boolean))
+      const hostelIds = new Set((b || []).map(x => x.hostel_id || x.hostelId).filter(Boolean))
+      await Promise.all([...roomIds].map(ensureRoom))
+      await Promise.all([...hostelIds].map(ensureHostel))
+
+      const p = await fetchWithParamFallback(
+        "/finance",
+        { user: userId, limit: 50, sort: "-date" },
+        [
+          { user_id: userId, limit: 50, sort: "-date" },
+          { student: userId, limit: 50, sort: "-date" },
+          { limit: 50, sort: "-date" },
+        ]
+      )
+      setPayments(Array.isArray(p) ? p.filter(x => String(x.method || "").toLowerCase() !== "payout") : [])
+
+      const n = await fetchWithParamFallback(
+        "/notices",
+        { limit: 10, sort: "-date_posted" },
+        [{ limit: 10, sort: "-createdAt" }, { limit: 10 }]
+      )
+      setNotices(n)
+
+      const firstRoom = r.find(x => x?.availability_status)?._id || r[0]?._id || r[0]?.id || ""
+      setBookForm(f => ({ ...f, hostel_id: defaultHostel, room_id: f.room_id || firstRoom }))
+      setFeedbackForm(f => ({ ...f, room_id: firstRoom }))
+      setComplaintForm(f => ({ ...f, room_id: firstRoom }))
+    } catch (e) {
+      toast(e?.response?.data?.message || e.message || "Failed to load data", true)
+    }
+  }
+
+  const refreshLists = async () => {
+    try { await loadAll() } catch { toast("Refresh failed", true) }
+  }
+
+  useEffect(() => { if (userId) loadAll() }, [userId])
+
+  // keep maps warm if bookings change later
+  useEffect(() => {
+    if (!bookings?.length) return
+    const rids = new Set(bookings.map(x => x.room_id).filter(Boolean))
+    const hids = new Set(bookings.map(x => x.hostel_id || x.hostelId).filter(Boolean))
+    rids.forEach(ensureRoom)
+    hids.forEach(ensureHostel)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings])
+
+  // ---------- derived stats ----------
   const stats = useMemo(() => {
-    const upcoming = bookings.filter(b => 
-      ['pending', 'confirmed'].includes(b.status)
-    ).length;
-    
-    const totalPaid = payments
-      .filter(p => p.status === 'paid')
-      .reduce((sum, p) => sum + p.amount, 0);
-    
-    const pending = payments
-      .filter(p => p.status === 'pending')
-      .reduce((sum, p) => sum + p.amount, 0);
-    
+    const upcoming = bookings.filter(b => ["pending", "confirmed", "checked_in"].includes(String(b.status || "").toLowerCase())).length
+    const completed = bookings.filter(b => String(b.status || "").toLowerCase() === "completed").length
+    const paidTotal = (payments || []).filter(x => isPaid(x.status)).reduce((s, x) => s + (Number(x.amount) || 0), 0)
     return {
       upcoming,
-      totalPaid,
-      pending,
-      totalBookings: bookings.length
-    };
-  }, [bookings, payments]);
-
-  // Handlers
-  const handleHostelSelect = (hostel) => {
-    setSelectedHostel(hostel);
-    setCurrentStep(2);
-  };
-
-  const handleRoomSelect = (room) => {
-    setSelectedRoom(room);
-    setShowRoomDetails(true);
-  };
-
-  const handleBookRoom = (room) => {
-    setSelectedRoom(room);
-    setCurrentStep(3);
-  };
-
-  const handleStartBooking = () => {
-    setCurrentStep(1);
-    setSelectedHostel(null);
-    setSelectedRoom(null);
-    setShowBookingWizard(true);
-  };
-
-  const handleCreateBooking = async () => {
-    if (!selectedHostel || !selectedRoom) {
-      showMessage('Please select hostel and room', 'error');
-      return;
+      completed,
+      dues: 0,
+      lastPayment: payments[0]?.amount ? fmtAmt(payments[0].amount) : "--",
+      paidTotal,
     }
-    
+  }, [bookings, payments])
+
+  // ---------- labels ----------
+  const roomLabel = (id) => {
+    if (!id) return "—"
+    const r = roomMap[id] || rooms.find(x => String(x._id || x.id) === String(id))
+    return r?.name || r?.type || `Room ${String(id).slice(-6)}`
+  }
+  const hostelLabel = (id) => {
+    if (!id) return "—"
+    const h = hostelMap[id] || hostels.find(x => String(x._id || x.id) === String(id))
+    return h?.name || h?.title || `Hostel ${String(id).slice(-6)}`
+  }
+  const bookingHostelLabel = (bk) => {
+    const hid =
+      bk.hostel_id || bk.hostelId ||
+      bk.hostel?._id || bk.hostel?.id ||
+      (roomMap[bk.room_id]?.hostel || roomMap[bk.room_id]?.hostel_id || roomMap[bk.room_id]?.hostelId)
+    return hostelLabel(hid)
+  }
+
+  // ---------- booking CRUD ----------
+  const onCreateBooking = async (e) => {
+    e.preventDefault()
+    if (!bookForm.hostel_id) return toast("Select a hostel", true)
+    if (!bookForm.room_id || !bookForm.start_date || !bookForm.end_date) return toast("Select room and dates", true)
     try {
-      setLoading(true);
-      await api.post('/bookings', {
-        hostel_id: selectedHostel._id,
-        room_id: selectedRoom._id,
-        user_id: user._id,
-        ...bookingForm
-      });
-      
-      showMessage('Booking created successfully!');
-      setShowBookingWizard(false);
-      // Refresh bookings
-      const bookingsRes = await api.get('/bookings');
-      setBookings(bookingsRes.data || []);
-    } catch (error) {
-      showMessage('Failed to create booking', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+      await api.post("/bookings", { ...bookForm, user_id: userId })
+      setShowBook(false); toast("Booking created"); await refreshLists()
+    } catch (e2) { toast(e2?.response?.data?.message || "Booking failed", true) }
+  }
 
-  const handlePayment = async () => {
+  const openEdit = (bk) => {
+    setEditForm({
+      id: bk._id,
+      start_date: (bk.start_date || bk.startDate || "").slice(0, 10) || todayISO(),
+      end_date: (bk.end_date || bk.endDate || "").slice(0, 10) || addDaysISO(30),
+    })
+    setShowEdit(true)
+  }
+
+  const onEditBooking = async (e) => {
+    e.preventDefault()
+    if (!editForm.id) return toast("Missing booking id", true)
     try {
-      setLoading(true);
-      await api.post('/finance', {
-        ...paymentForm,
-        user_id: user._id,
-        status: 'paid',
-        date: new Date().toISOString()
-      });
-      
-      showMessage('Payment processed successfully!');
-      setShowPaymentModal(false);
-      // Refresh payments
-      const paymentsRes = await api.get('/finance');
-      setPayments(paymentsRes.data || []);
-    } catch (error) {
-      showMessage('Payment failed', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+      await api.patch(`/bookings/${editForm.id}`, { start_date: editForm.start_date, end_date: editForm.end_date })
+      setShowEdit(false); toast("Booking updated"); await refreshLists()
+    } catch (e2) { toast(e2?.response?.data?.message || "Update failed", true) }
+  }
 
-  const handleCancelPayment = async (paymentId) => {
-    if (!confirm('Are you sure you want to cancel this payment?')) return;
-    
+  const onCancelBooking = async (bk) => {
+    if (!bk?._id) return
+    if (!confirm("Cancel this booking?")) return
+    try { await api.patch(`/bookings/${bk._id}/cancel`); toast("Booking cancelled"); await refreshLists() }
+    catch (e2) { toast(e2?.response?.data?.message || "Cancel failed", true) }
+  }
+
+  // ---------- payments ----------
+  const openPay = (bk) => {
+    const defaultAmt = bk.amount_due ?? bk.amount ?? bk.rent ?? bk.price ?? ""
+    setPayForm({ booking_id: bk._id, amount: defaultAmt, method: "card" })
+    setShowPay(true)
+  }
+
+  const onPayNow = async (e) => {
+    e.preventDefault()
+    if (!payForm.booking_id) return toast("Missing booking", true)
+    const amt = Number(payForm.amount)
+    if (!amt || amt <= 0) return toast("Enter a valid amount", true)
     try {
-      setLoading(true);
-      await api.patch(`/finance/${paymentId}/cancel`);
-      showMessage('Payment cancelled successfully!');
-      // Refresh payments
-      const paymentsRes = await api.get('/finance');
-      setPayments(paymentsRes.data || []);
-    } catch (error) {
-      showMessage('Failed to cancel payment', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+      await api.post("/finance", {
+        user_id: userId,
+        booking_id: payForm.booking_id,
+        amount: amt,
+        method: payForm.method,
+        date: new Date().toISOString(),
+        status: "paid",
+        meta: { note: "Mock payment from student dashboard" },
+      })
+      toast("Payment recorded"); setShowPay(false); await refreshLists()
+    } catch (err) { toast(err?.response?.data?.message || "Payment failed", true) }
+  }
 
-  const openPaymentModal = (booking) => {
-    setPaymentForm({
-      amount: booking.amount || '',
-      method: 'card',
-      booking_id: booking._id
-    });
-    setShowPaymentModal(true);
-  };
+  const canShowPay = (bk) => {
+    const status = String(bk.status || "").toLowerCase()
+    const active = ["pending", "confirmed", "checked_in"].includes(status)
+    const paid = isPaid(bk.payment_status)
+    return active && !paid
+  }
+
+  // ---------- feedback & complaint ----------
+  const onSubmitFeedback = async (e) => {
+    e.preventDefault()
+    try {
+      await api.post("/feedback", {
+        user_id: userId,
+        room_id: feedbackForm.room_id || undefined,
+        comments: feedbackForm.comments,
+        rating: Number(feedbackForm.rating) || 5,
+        date: new Date().toISOString(),
+      })
+      toast("Feedback submitted"); setShowFeedback(false)
+      setFeedbackForm({ comments: "", rating: 5, room_id: rooms[0]?._id || rooms[0]?.id || "" })
+    } catch (e2) { toast(e2?.response?.data?.message || "Feedback failed", true) }
+  }
+
+  const onSubmitComplaint = async (e) => {
+    e.preventDefault()
+    if (!complaintForm.subject?.trim() || !complaintForm.description?.trim()) {
+      return toast("Please enter subject and description", true)
+    }
+    try {
+      await api.post("/complaints", {
+        subject: complaintForm.subject.trim(),
+        description: complaintForm.description.trim(),
+        user: userId,
+        ...(complaintForm.room_id ? { room_id: complaintForm.room_id } : {}),
+      })
+      toast("Complaint submitted")
+      setShowComplaint(false)
+      setComplaintForm({ subject: "", description: "", room_id: rooms[0]?._id || rooms[0]?.id || "" })
+    } catch (e2) { toast(e2?.response?.data?.message || "Complaint failed", true) }
+  }
+
+  // ---------- availability check ----------
+  const [availMsg, setAvailMsg] = useState("")
+  const checkAvailability = async () => {
+    setAvailMsg("")
+    if (!bookForm.hostel_id || !bookForm.start_date || !bookForm.end_date) {
+      setAvailMsg("Select hostel and dates"); return
+    }
+    const fresh = await loadRoomsForHostel(bookForm.hostel_id, bookForm.start_date, bookForm.end_date)
+    const isAvailable = fresh.some(r => String(r._id || r.id) === String(bookForm.room_id))
+    setAvailMsg(isAvailable ? "✅ Selected room is available for the chosen dates." : "❌ Room not available; try another room or dates.")
+    setRooms(fresh)
+    const rm = {}
+    fresh.forEach(x => { const id = x._id || x.id; if (id) rm[id] = x })
+    setRoomMap(m => ({ ...m, ...rm }))
+  }
+
+  // ---------- render ----------
+  const upcomingOrActive = useMemo(() => {
+    const now = new Date()
+    return (bookings || [])
+      .filter((b) => {
+        const start = new Date(b.start_date || b.startDate || b.start)
+        const end = new Date(b.end_date || b.endDate || b.end)
+        return !isNaN(start) && !isNaN(end) ? end >= now : true
+      })
+      .sort(
+        (a, b) =>
+          new Date(a.start_date || a.startDate || a.start) -
+          new Date(b.start_date || b.startDate || b.start)
+      )
+  }, [bookings])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900">
-      <div className="container mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">Student Dashboard</h1>
-            <p className="text-white/70">Welcome back, {user.name}!</p>
-          </div>
-          <div className="flex gap-3">
-            <Button onClick={handleStartBooking}>
-              <Building2 className="h-4 w-4 mr-2" />
-              New Booking
-            </Button>
-            <Button variant="outline" onClick={() => setShowPaymentHistory(true)}>
-              <CreditCard className="h-4 w-4 mr-2" />
-              Payment History
-            </Button>
-          </div>
-        </div>
+    <AppLayout>
+      <LocalCss />
 
-        {/* Message */}
-        {message.text && (
-          <div className={`mb-6 p-4 rounded-xl ${
-            message.type === 'error' 
-              ? 'bg-red-500/20 border border-red-500/50 text-red-200' 
-              : 'bg-green-500/20 border border-green-500/50 text-green-200'
-          }`}>
-            {message.text}
-          </div>
-        )}
-
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard 
-            title="Active Bookings" 
-            value={stats.upcoming} 
-            icon={Building2}
-            color="blue" 
-          />
-          <StatCard 
-            title="Total Bookings" 
-            value={stats.totalBookings} 
-            icon={Calendar}
-            color="purple" 
-          />
-          <StatCard 
-            title="Total Paid" 
-            value={fmtAmt(stats.totalPaid)} 
-            icon={CheckCircle}
-            color="green" 
-          />
-          <StatCard 
-            title="Pending Payments" 
-            value={fmtAmt(stats.pending)} 
-            icon={Clock}
-            color="orange" 
-          />
-        </div>
-
-        {/* Recent Bookings */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-8 backdrop-blur-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-white">Recent Bookings</h2>
-            <Button variant="outline" size="sm">
-              View All
-            </Button>
-          </div>
-          
-          {bookings.length === 0 ? (
-            <div className="text-center py-12">
-              <Building2 className="h-12 w-12 text-white/30 mx-auto mb-4" />
-              <p className="text-white/70 mb-4">No bookings yet</p>
-              <Button onClick={handleStartBooking}>Create Your First Booking</Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {bookings.slice(0, 3).map((booking) => (
-                <div key={booking._id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/10">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-3 h-3 rounded-full ${
-                      booking.status === 'confirmed' ? 'bg-green-400' :
-                      booking.status === 'pending' ? 'bg-yellow-400' : 'bg-red-400'
-                    }`} />
-                    <div>
-                      <h3 className="text-white font-medium">Booking #{booking._id.slice(-6)}</h3>
-                      <p className="text-white/70 text-sm">
-                        {fmtD(booking.start_date)} - {fmtD(booking.end_date)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      booking.payment_status === 'paid' ? 'bg-green-500/20 text-green-400' :
-                      'bg-yellow-500/20 text-yellow-400'
-                    }`}>
-                      {booking.payment_status === 'paid' ? 'Paid' : 'Pending'}
-                    </span>
-                    {booking.payment_status !== 'paid' && (
-                      <Button size="sm" onClick={() => openPaymentModal(booking)}>
-                        <CreditCard className="h-4 w-4 mr-1" />
-                        Pay Now
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Recent Payments */}
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-sm">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-white">Recent Payments</h2>
-            <Button variant="outline" size="sm" onClick={() => setShowPaymentHistory(true)}>
-              View All
-            </Button>
-          </div>
-          
-          {payments.length === 0 ? (
-            <div className="text-center py-8">
-              <CreditCard className="h-8 w-8 text-white/30 mx-auto mb-3" />
-              <p className="text-white/70">No payments yet</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {payments.slice(0, 5).map((payment) => (
-                <div key={payment._id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
-                  <div className="flex items-center gap-3">
-                    <DollarSign className="h-5 w-5 text-green-400" />
-                    <div>
-                      <p className="text-white font-medium">{fmtAmt(payment.amount)}</p>
-                      <p className="text-white/70 text-sm">{fmtD(payment.date)} • {payment.method}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      payment.status === 'paid' ? 'bg-green-500/20 text-green-400' :
-                      'bg-yellow-500/20 text-yellow-400'
-                    }`}>
-                      {payment.status}
-                    </span>
-                    {payment.can_cancel && payment.status === 'paid' && (
-                      <Button 
-                        variant="danger" 
-                        size="sm" 
-                        onClick={() => handleCancelPayment(payment._id)}
-                      >
-                        Cancel
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-semibold text-white">Student Dashboard</h2>
+        <div className="flex items-center gap-3 text-sm">
+          <button onClick={refreshLists} className="btn-ghost rounded-lg px-3 py-1.5">
+            {loadingHostels || loadingRooms ? "Refreshing…" : "Refresh"}
+          </button>
+          <Link to="/bookings" className="btn-primary rounded-lg px-3 py-1.5 font-medium">All bookings</Link>
         </div>
       </div>
 
-      {/* Booking Wizard Modal */}
-      <Modal 
-        open={showBookingWizard} 
-        title={`Book a Room - Step ${currentStep} of 3`}
-        onClose={() => setShowBookingWizard(false)}
-        size="large"
-      >
-        <div className="mb-6">
-          <div className="flex items-center justify-center">
-            <div className="flex items-center w-full max-w-md">
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
-                currentStep >= 1 ? 'bg-blue-600 border-blue-600 text-white' : 'border-white/30 text-white/30'
-              }`}>
-                1
-              </div>
-              <div className={`flex-1 h-0.5 mx-2 ${currentStep >= 2 ? 'bg-blue-600' : 'bg-white/30'}`} />
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
-                currentStep >= 2 ? 'bg-blue-600 border-blue-600 text-white' : 'border-white/30 text-white/30'
-              }`}>
-                2
-              </div>
-              <div className={`flex-1 h-0.5 mx-2 ${currentStep >= 3 ? 'bg-blue-600' : 'bg-white/30'}`} />
-              <div className={`flex items-center justify-center w-8 h-8 rounded-full border-2 ${
-                currentStep >= 3 ? 'bg-blue-600 border-blue-600 text-white' : 'border-white/30 text-white/30'
-              }`}>
-                3
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-between text-sm text-white/70 mt-2 max-w-md mx-auto">
-            <span>Select Hostel</span>
-            <span>Choose Room</span>
-            <span>Book & Pay</span>
-          </div>
+      {(ok || err) && (
+        <div className="mt-3">
+          {ok && <span className="rounded bg-green-500/20 px-3 py-1 text-sm text-green-300">{ok}</span>}
+          {err && <span className="rounded bg-red-500/20 px-3 py-1 text-sm text-red-300">{err}</span>}
         </div>
+      )}
 
-        {/* Step 1: Select Hostel */}
-        {currentStep === 1 && (
-          <div>
-            <h3 className="text-lg font-semibold text-white mb-4">Select a Hostel</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-h-96 overflow-y-auto">
-              {hostels.map((hostel) => (
-                <HostelCard 
-                  key={hostel._id}
-                  hostel={hostel}
-                  selected={selectedHostel?._id === hostel._id}
-                  onSelect={handleHostelSelect}
-                />
+      {/* Stats */}
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard title="Upcoming bookings" value={stats.upcoming} />
+        <StatCard title="Completed stays" value={stats.completed} />
+        <StatCard title="Outstanding dues" value={`LKR ${stats.dues}`} />
+        <StatCard title="Last payment" value={stats.lastPayment} />
+      </div>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        {/* Bookings */}
+        <Section
+          title="My bookings"
+          subtitle="Latest reservations"
+          actions={
+            <div className="flex flex-wrap items-center gap-3">
+              <button onClick={() => setShowBook(true)} className="btn-primary rounded-lg px-3 py-1.5 text-sm font-medium">New booking</button>
+              <button onClick={() => setShowFeedback(true)} className="btn-ghost rounded-lg px-3 py-1.5 text-sm">Give feedback</button>
+              <button onClick={() => setShowComplaint(true)} className="btn-ghost rounded-lg px-3 py-1.5 text-sm">New complaint</button>
+              <Link to="/feedback" className="btn-ghost rounded-lg px-3 py-1.5 text-sm">My feedback</Link>
+              <Link to="/complaints" className="btn-ghost rounded-lg px-3 py-1.5 text-sm">My complaints</Link>
+            </div>
+          }
+        >
+          <DataTable
+            columns={[
+              { key: "hostel", header: "Hostel", render: (r) => bookingHostelLabel(r) },
+              { key: "room", header: "Room", render: (r) => roomLabel(r.room_id) },
+              { key: "start_date", header: "Start", render: (r) => fmtD(r.start_date || r.startDate || r.start) },
+              { key: "end_date", header: "End", render: (r) => fmtD(r.end_date || r.endDate || r.end) },
+              { key: "status", header: "Status" },
+              {
+                key: "actions",
+                header: "Actions",
+                render: (r) => (
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => openEdit(r)} className="chip rounded-md px-2 py-1 text-xs">Edit</button>
+                    <button onClick={() => onCancelBooking(r)} className="rounded-md border border-red-400/50 bg-red-400/10 px-2 py-1 text-xs text-red-300 hover:bg-red-400/20">Cancel</button>
+                    {canShowPay(r) && (
+                      <button onClick={() => openPay(r)} className="rounded-md border border-emerald-400/50 bg-emerald-400/10 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-400/20">Pay</button>
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+            rows={upcomingOrActive}
+            emptyText={"No bookings yet."}
+          />
+        </Section>
+
+        {/* Payments */}
+        <Section
+          title="Payments"
+          subtitle="Recent transactions"
+          actions={<Link to="/finance" className="text-sm text-white underline">View all</Link>}
+        >
+          <DataTable
+            columns={[
+              { key: "date", header: "Date", render: (r) => fmtD(r.date || r.createdAt) },
+              { key: "amount", header: "Amount", render: (r) => fmtAmt(r.amount) },
+              { key: "method", header: "Method" },
+              { key: "status", header: "Status" },
+            ]}
+            rows={payments}
+            emptyText={"No payments found."}
+          />
+        </Section>
+      </div>
+
+      {/* Notices */}
+      <div className="mt-6">
+        <Section
+          title="Latest notices"
+          subtitle="What’s new from hostel owners"
+          actions={<Link to="/notices" className="text-sm text-white underline">View all</Link>}
+        >
+          {notices.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-white/80">No notices yet.</div>
+          ) : (
+            <div className="grid gap-3">
+              {notices.slice(0, 6).map((n) => (
+                <div key={n._id || n.id} className="notice-box rounded-2xl p-3 text-white">
+                  <div className="font-medium">{n.title}</div>
+                  <div className="mt-1 text-sm text-white/80">{n.description}</div>
+                  <div className="mt-2 text-xs text-white/60">{fmtD(n.date_posted || n.createdAt)}</div>
+                </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </Section>
+      </div>
 
-        {/* Step 2: Select Room */}
-        {currentStep === 2 && (
+      {/* Book a room */}
+      <Modal open={showBook} title="Book a room" onClose={() => setShowBook(false)}>
+        <form onSubmit={onCreateBooking} className="space-y-4 text-white">
+          {/* Hostel */}
           <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Choose a Room</h3>
-              <Button variant="outline" size="sm" onClick={() => setCurrentStep(1)}>
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Back to Hostels
-              </Button>
-            </div>
-            <div className="mb-4 p-4 bg-white/5 rounded-xl border border-white/10">
-              <h4 className="font-medium text-white">{selectedHostel?.name}</h4>
-              <p className="text-white/70 text-sm">{selectedHostel?.location}</p>
-            </div>
-            <div className="space-y-4 max-h-96 overflow-y-auto">
-              {rooms.map((room) => (
-                <RoomCard
-                  key={room._id}
-                  room={room}
-                  onSelect={handleRoomSelect}
-                  onBook={handleBookRoom}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Booking Details */}
-        {currentStep === 3 && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-white">Booking Details</h3>
-              <Button variant="outline" size="sm" onClick={() => setCurrentStep(2)}>
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Back to Rooms
-              </Button>
-            </div>
-            
-            <div className="space-y-6">
-              {/* Selected Items Summary */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-                  <h4 className="font-medium text-white mb-2">Selected Hostel</h4>
-                  <p className="text-white/70">{selectedHostel?.name}</p>
-                  <p className="text-white/60 text-sm">{selectedHostel?.location}</p>
-                </div>
-                <div className="p-4 bg-white/5 rounded-xl border border-white/10">
-                  <h4 className="font-medium text-white mb-2">Selected Room</h4>
-                  <p className="text-white/70">{selectedRoom?.name}</p>
-                  <p className="text-green-400 font-bold">LKR {selectedRoom?.rent?.toLocaleString()}/month</p>
-                </div>
-              </div>
-
-              {/* Booking Dates */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2">Start Date</label>
-                  <input
-                    type="date"
-                    className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={bookingForm.start_date}
-                    onChange={(e) => setBookingForm(prev => ({ ...prev, start_date: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-white mb-2">End Date</label>
-                  <input
-                    type="date"
-                    className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    value={bookingForm.end_date}
-                    onChange={(e) => setBookingForm(prev => ({ ...prev, end_date: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-                <Button variant="outline" onClick={() => setShowBookingWizard(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleCreateBooking} disabled={loading}>
-                  {loading ? 'Creating...' : 'Create Booking'}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* Payment Modal */}
-      <Modal 
-        open={showPaymentModal} 
-        title="Process Payment"
-        onClose={() => setShowPaymentModal(false)}
-      >
-        <div className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">Amount (LKR)</label>
-            <input
-              type="number"
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={paymentForm.amount}
-              onChange={(e) => setPaymentForm(prev => ({ ...prev, amount: e.target.value }))}
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">Payment Method</label>
+            <div className="mb-1 text-sm font-medium">Hostel</div>
             <select
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={paymentForm.method}
-              onChange={(e) => setPaymentForm(prev => ({ ...prev, method: e.target.value }))}
+              className="select-dark input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={bookForm.hostel_id}
+              onChange={async (e) => {
+                const hostel_id = e.target.value
+                setBookForm(f => ({ ...f, hostel_id }))
+                const rs = await loadRoomsForHostel(hostel_id, bookForm.start_date, bookForm.end_date)
+                setRooms(rs)
+                const rm = {}
+                rs.forEach(x => { const id = x._id || x.id; if (id) rm[id] = x })
+                setRoomMap(m => ({ ...m, ...rm }))
+                const first = rs.find(x => x?.availability_status)?._id || rs[0]?._id || rs[0]?.id || ""
+                setBookForm(f => ({ ...f, room_id: first }))
+              }}
+              required
             >
-              <option value="card" className="bg-gray-900">Credit Card</option>
-              <option value="bank" className="bg-gray-900">Bank Transfer</option>
-              <option value="cash" className="bg-gray-900">Cash</option>
+              <option className="bg-gray-900 text-white" value="">{loadingHostels ? "Loading hostels…" : "Select a hostel"}</option>
+              {(hostels || []).map(h => (
+                <option className="bg-gray-900 text-white" key={h._id || h.id} value={h._id || h.id}>
+                  {h.name || h.title || `Hostel ${String(h._id || h.id).slice(-6)}`}
+                </option>
+              ))}
             </select>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-            <Button variant="outline" onClick={() => setShowPaymentModal(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handlePayment} disabled={loading}>
-              {loading ? 'Processing...' : 'Process Payment'}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Room Details Modal */}
-      <Modal 
-        open={showRoomDetails} 
-        title="Room Details"
-        onClose={() => setShowRoomDetails(false)}
-      >
-        {selectedRoom && (
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-xl font-semibold text-white mb-2">{selectedRoom.name}</h3>
-              <p className="text-white/70">{selectedRoom.description}</p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-white/5 rounded-xl">
-                <h4 className="font-medium text-white mb-1">Type</h4>
-                <p className="text-white/70">{selectedRoom.type}</p>
-              </div>
-              <div className="p-4 bg-white/5 rounded-xl">
-                <h4 className="font-medium text-white mb-1">Capacity</h4>
-                <p className="text-white/70">{selectedRoom.capacity} person(s)</p>
-              </div>
-            </div>
-            
-            <div className="p-4 bg-white/5 rounded-xl">
-              <h4 className="font-medium text-white mb-3">Amenities</h4>
-              <div className="flex flex-wrap gap-2">
-                {selectedRoom.amenities?.map((amenity, idx) => (
-                  <span key={idx} className="px-3 py-1 bg-white/10 rounded-lg text-sm text-white">
-                    {amenity}
-                  </span>
-                ))}
-              </div>
-            </div>
-            
-            <div className="text-center p-4 bg-green-500/10 rounded-xl border border-green-500/20">
-              <p className="text-2xl font-bold text-green-400">LKR {selectedRoom.rent?.toLocaleString()}</p>
-              <p className="text-green-300 text-sm">per month</p>
-            </div>
-            
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setShowRoomDetails(false)}>
-                Close
-              </Button>
-              {selectedRoom.availability_status && (
-                <Button onClick={() => {
-                  setShowRoomDetails(false);
-                  handleBookRoom(selectedRoom);
-                  setShowBookingWizard(true);
-                }}>
-                  Book This Room
-                </Button>
+          {/* Room */}
+          <div>
+            <div className="mb-1 text-sm font-medium">Room</div>
+            <select
+              className="select-dark input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={bookForm.room_id}
+              onChange={(e) => setBookForm(f => ({ ...f, room_id: e.target.value }))}
+              required
+              disabled={!bookForm.hostel_id}
+            >
+              {!bookForm.hostel_id && <option className="bg-gray-900 text-white" value="">Select a hostel first</option>}
+              {bookForm.hostel_id && (
+                rooms?.length ? (
+                  rooms.map(r => (
+                    <option className="bg-gray-900 text-white" key={r._id || r.id} value={r._id || r.id}>
+                      {(r.name || r.type || `Room ${String(r._id || r.id).slice(-4)}`)}{r.capacity ? ` • cap ${r.capacity}` : ""}{r.rent ? ` • LKR ${r.rent}` : ""}
+                    </option>
+                  ))
+                ) : (
+                  <option className="bg-gray-900 text-white" value="">{loadingRooms ? "Loading rooms…" : "No rooms found for this hostel"}</option>
+                )
               )}
-            </div>
+            </select>
           </div>
-        )}
+
+          {/* Dates */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">Start date</span>
+              <input
+                type="date"
+                className="input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={bookForm.start_date}
+                onChange={async (e) => {
+                  const start_date = e.target.value
+                  setBookForm(f => ({ ...f, start_date }))
+                  if (bookForm.hostel_id) {
+                    const rs = await loadRoomsForHostel(bookForm.hostel_id, start_date, bookForm.end_date)
+                    setRooms(rs)
+                    const rm = {}
+                    rs.forEach(x => { const id = x._id || x.id; if (id) rm[id] = x })
+                    setRoomMap(m => ({ ...m, ...rm }))
+                    if (!rs.some(x => String(x._id || x.id) === String(bookForm.room_id))) {
+                      setBookForm(f => ({ ...f, room_id: rs[0]?._id || rs[0]?.id || "" }))
+                    }
+                  }
+                }}
+                required
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">End date</span>
+              <input
+                type="date"
+                className="input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={bookForm.end_date}
+                onChange={async (e) => {
+                  const end_date = e.target.value
+                  setBookForm(f => ({ ...f, end_date }))
+                  if (bookForm.hostel_id) {
+                    const rs = await loadRoomsForHostel(bookForm.hostel_id, bookForm.start_date, end_date)
+                    setRooms(rs)
+                    const rm = {}
+                    rs.forEach(x => { const id = x._id || x.id; if (id) rm[id] = x })
+                    setRoomMap(m => ({ ...m, ...rm }))
+                    if (!rs.some(x => String(x._id || x.id) === String(bookForm.room_id))) {
+                      setBookForm(f => ({ ...f, room_id: rs[0]?._id || rs[0]?.id || "" }))
+                    }
+                  }
+                }}
+                required
+              />
+            </label>
+          </div>
+
+          {/* Availability check */}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={checkAvailability}
+              className="btn-ghost rounded-lg px-3 py-2 text-sm"
+            >
+              Check availability
+            </button>
+            {availMsg && <span className="text-sm">{availMsg}</span>}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setShowBook(false)} className="btn-ghost rounded-lg px-4 py-2 text-sm">Close</button>
+            <button type="submit" className="btn-primary rounded-lg px-4 py-2 text-sm font-medium">Create booking</button>
+          </div>
+        </form>
       </Modal>
 
-      {/* Payment History Modal */}
-      <Modal 
-        open={showPaymentHistory} 
-        title="Payment History"
-        onClose={() => setShowPaymentHistory(false)}
-        size="large"
-      >
-        <div className="space-y-4">
-          {payments.length === 0 ? (
-            <div className="text-center py-8">
-              <CreditCard className="h-12 w-12 text-white/30 mx-auto mb-4" />
-              <p className="text-white/70">No payment history available</p>
-            </div>
-          ) : (
-            payments.map((payment) => (
-              <div key={payment._id} className="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/10">
-                <div className="flex items-center gap-4">
-                  <div className={`w-3 h-3 rounded-full ${
-                    payment.status === 'paid' ? 'bg-green-400' :
-                    payment.status === 'pending' ? 'bg-yellow-400' : 'bg-red-400'
-                  }`} />
-                  <div>
-                    <p className="text-white font-medium">{fmtAmt(payment.amount)}</p>
-                    <p className="text-white/70 text-sm">
-                      {fmtD(payment.date)} • {payment.method} • {payment.status}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {payment.can_cancel && payment.status === 'paid' && (
-                    <Button 
-                      variant="danger" 
-                      size="sm" 
-                      onClick={() => handleCancelPayment(payment._id)}
-                    >
-                      <XCircle className="h-4 w-4 mr-1" />
-                      Cancel Payment
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+      {/* Edit booking */}
+      <Modal open={showEdit} title="Edit booking" onClose={() => setShowEdit(false)}>
+        <form onSubmit={onEditBooking} className="space-y-4 text-white">
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">Start date</span>
+              <input type="date" className="input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400" value={editForm.start_date} onChange={(e) => setEditForm(f => ({ ...f, start_date: e.target.value }))} required />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">End date</span>
+              <input type="date" className="input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400" value={editForm.end_date} onChange={(e) => setEditForm(f => ({ ...f, end_date: e.target.value }))} required />
+            </label>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setShowEdit(false)} className="btn-ghost rounded-lg px-4 py-2 text-sm">Close</button>
+            <button type="submit" className="btn-primary rounded-lg px-4 py-2 text-sm font-medium">Save changes</button>
+          </div>
+        </form>
       </Modal>
-    </div>
-  );
+
+      {/* Give feedback */}
+      <Modal open={showFeedback} title="Give feedback" onClose={() => setShowFeedback(false)}>
+        <form onSubmit={onSubmitFeedback} className="space-y-4 text-white">
+          <div>
+            <div className="mb-1 text-sm font-medium">Room (optional)</div>
+            <select
+              className="select-dark input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={feedbackForm.room_id}
+              onChange={(e) => setFeedbackForm(f => ({ ...f, room_id: e.target.value }))}
+            >
+              <option className="bg-gray-900 text-white" value="">—</option>
+              {(rooms || []).map(r => (
+                <option className="bg-gray-900 text-white" key={r._id || r.id} value={r._id || r.id}>
+                  {r.name || r.type}{r.capacity ? ` • cap ${r.capacity}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">Rating</span>
+              <input
+                type="number" min="1" max="5"
+                className="input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={feedbackForm.rating}
+                onChange={(e) => setFeedbackForm(f => ({ ...f, rating: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="block md:col-span-1">
+              <span className="mb-1 block text-sm font-medium">Comments</span>
+              <input
+                className="input-dark w-full rounded-lg px-3 py-2 placeholder:text-white/70 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={feedbackForm.comments}
+                onChange={(e) => setFeedbackForm(f => ({ ...f, comments: e.target.value }))}
+                placeholder="Your experience..."
+                required
+              />
+            </label>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setShowFeedback(false)} className="btn-ghost rounded-lg px-4 py-2 text-sm">Close</button>
+            <button type="submit" className="btn-primary rounded-lg px-4 py-2 text-sm font-medium">Submit</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Create complaint */}
+      <Modal open={showComplaint} title="Create complaint" onClose={() => setShowComplaint(false)}>
+        <form onSubmit={onSubmitComplaint} className="space-y-4 text-white">
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">Subject</span>
+              <input
+                className="input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={complaintForm.subject}
+                onChange={(e) => setComplaintForm(f => ({ ...f, subject: e.target.value }))}
+                placeholder="Eg. Broken shower"
+                required
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">Room (optional)</span>
+              <select
+                className="select-dark input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={complaintForm.room_id}
+                onChange={(e) => setComplaintForm(f => ({ ...f, room_id: e.target.value }))}
+              >
+                <option className="bg-gray-900 text-white" value="">—</option>
+                {(rooms || []).map(r => <option className="bg-gray-900 text-white" key={r._id || r.id} value={r._id || r.id}>{r.name || r.type}</option>)}
+              </select>
+            </label>
+          </div>
+          <div>
+            <div className="mb-1 text-sm font-medium">Description</div>
+            <textarea
+              rows="4"
+              className="input-dark w-full rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={complaintForm.description}
+              onChange={(e) => setComplaintForm(f => ({ ...f, description: e.target.value }))}
+              placeholder="Describe the issue…"
+              required
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setShowComplaint(false)} className="btn-ghost rounded-lg px-4 py-2 text-sm">Close</button>
+            <button type="submit" className="btn-primary rounded-lg px-4 py-2 text-sm font-medium">Submit complaint</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Pay modal */}
+      <Modal open={showPay} title="Pay for booking" onClose={() => setShowPay(false)}>
+        <form onSubmit={onPayNow} className="space-y-4 text-white">
+          <div>
+            <label className="mb-1 block text-sm font-medium">Amount (LKR)</label>
+            <input
+              type="number" min={0} step="0.01"
+              className="input-dark w-full rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={payForm.amount}
+              onChange={(e) => setPayForm(f => ({ ...f, amount: e.target.value }))}
+              required
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium">Method</label>
+            <select
+              className="select-dark input-dark w-full rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+              value={payForm.method}
+              onChange={(e) => setPayForm(f => ({ ...f, method: e.target.value }))}
+            >
+              <option className="bg-gray-900 text-white" value="card">Card</option>
+              <option className="bg-gray-900 text-white" value="cash">Cash</option>
+              <option className="bg-gray-900 text-white" value="bank">Bank transfer</option>
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-ghost rounded px-3 py-1.5" onClick={() => setShowPay(false)}>Cancel</button>
+            <button type="submit" className="btn-primary rounded px-3 py-1.5">Pay now</button>
+          </div>
+        </form>
+      </Modal>
+    </AppLayout>
+  )
 }
