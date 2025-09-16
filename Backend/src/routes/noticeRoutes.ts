@@ -6,17 +6,20 @@ import {
   updateNotice,
   deleteNotice,
 } from "../controllers/noticeController";
-
-// import { requireAuth, requireRole } from "../middleware/auth";
-const requireAuth = (_req: any, _res: any, next: any) => next();
-const requireStaffOrAdmin = (_req: any, _res: any, next: any) => next();
+import { requireAuth, requireRole } from "../middleware/auth";
+import {
+  validate,
+  createNoticeSchema,
+  listNoticesQuerySchema,
+  updateNoticeSchema,
+} from "../middleware/validation";
 
 const router = Router();
 
-router.get("/", requireAuth, listNotices);
-router.post("/", requireStaffOrAdmin, createNotice);
+router.get("/", requireAuth, validate(listNoticesQuerySchema, "query"), listNotices);
+router.post("/", requireAuth, requireRole("hostel_owner", "maintenance_manager"), validate(createNoticeSchema), createNotice);
 router.get("/:id", requireAuth, getNoticeById);
-router.patch("/:id", requireStaffOrAdmin, updateNotice);
-router.delete("/:id", requireStaffOrAdmin, deleteNotice);
+router.patch("/:id", requireAuth, requireRole("hostel_owner", "maintenance_manager"), validate(updateNoticeSchema), updateNotice);
+router.delete("/:id", requireAuth, requireRole("hostel_owner", "maintenance_manager"), deleteNotice);
 
 export default router;

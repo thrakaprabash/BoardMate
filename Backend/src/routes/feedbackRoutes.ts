@@ -4,15 +4,17 @@ import {
   listFeedback,
   deleteFeedback,
 } from "../controllers/feedbackController";
-
-// import { requireAuth, requireRole } from "../middleware/auth";
-const requireAuth = (_req: any, _res: any, next: any) => next();
-const requireAdmin = (_req: any, _res: any, next: any) => next();
+import { requireAuth, requireRole } from "../middleware/auth";
+import {
+  validate,
+  createFeedbackSchema,
+  listFeedbackQuerySchema,
+} from "../middleware/validation";
 
 const router = Router();
 
-router.get("/", requireAuth, listFeedback);
-router.post("/", requireAuth, createFeedback);
-router.delete("/:id", requireAdmin, deleteFeedback);
+router.get("/", requireAuth, validate(listFeedbackQuerySchema, "query"), listFeedback);
+router.post("/", requireAuth, validate(createFeedbackSchema), createFeedback);
+router.delete("/:id", requireAuth, requireRole("hostel_owner", "maintenance_manager"), deleteFeedback);
 
 export default router;

@@ -20,6 +20,7 @@ import complaintRoutes from "./routes/complaintRoutes";
 import noticeRoutes from "./routes/noticeRoutes";
 import reportRoutes from "./routes/reportRoutes";
 import authRoutes from "./routes/authRoutes";
+import technicianRoutes from "./routes/technicianRoutes";
 
 
 const app = express();
@@ -49,7 +50,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/complaints", complaintRoutes);
 app.use("/api/notices", noticeRoutes);
 app.use("/api/reports", reportRoutes);
-
+app.use("/api/technicians", technicianRoutes);
 
 // 404 + error handler
 app.use(notFound);

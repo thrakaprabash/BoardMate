@@ -7,21 +7,22 @@ import {
   refundPayment,
   revenueSummary,
 } from "../controllers/financeController";
-
-// import { requireAuth, requireRole } from "../middleware/auth";
-const requireAuth = (_req: any, _res: any, next: any) => next();
-const requireFinanceOrAdmin = (_req: any, _res: any, next: any) => next();
+import { requireAuth, requireRole } from "../middleware/auth";
+import {
+  validate,
+  createPaymentSchema,
+  listPaymentsQuerySchema,
+  updatePaymentSchema,
+  refundPaymentSchema,
+} from "../middleware/validation";
 
 const router = Router();
 
-// payments
-router.get("/", requireAuth, listPayments);
-router.post("/", requireFinanceOrAdmin, createPayment);
+router.get("/", requireAuth, validate(listPaymentsQuerySchema, "query"), listPayments);
+router.post("/", requireAuth, requireRole("hostel_owner", "student"), validate(createPaymentSchema), createPayment);
 router.get("/:id", requireAuth, getPaymentById);
-router.patch("/:id", requireFinanceOrAdmin, updatePayment);
-router.post("/:id/refund", requireFinanceOrAdmin, refundPayment);
-
-// summaries
-router.get("/revenue/summary", requireFinanceOrAdmin, revenueSummary);
+router.patch("/:id", requireAuth, requireRole("hostel_owner", "maintenance_manager"), validate(updatePaymentSchema), updatePayment);
+router.post("/:id/refund", requireAuth, requireRole("hostel_owner", "maintenance_manager"), validate(refundPaymentSchema), refundPayment);
+router.get("/revenue/summary", requireAuth, requireRole("hostel_owner", "maintenance_manager"), revenueSummary);
 
 export default router;

@@ -6,17 +6,20 @@ import {
   updateHostel,
   deleteHostel,
 } from "../controllers/hostelController";
-
-// import { requireAuth, requireRole } from "../middleware/auth";
-const requireAuth = (_req: any, _res: any, next: any) => next();
-const requireOwnerOrAdmin = (_req: any, _res: any, next: any) => next();
+import { requireAuth, requireRole } from "../middleware/auth";
+import {
+  validate,
+  createHostelSchema,
+  listHostelsQuerySchema,
+  updateHostelSchema,
+} from "../middleware/validation";
 
 const router = Router();
 
-router.get("/", requireAuth, listHostels);
-router.post("/", requireOwnerOrAdmin, createHostel);
+router.get("/", requireAuth, validate(listHostelsQuerySchema, "query"), listHostels);
+router.post("/", requireAuth, requireRole("hostel_owner", "maintenance_manager"), validate(createHostelSchema), createHostel);
 router.get("/:id", requireAuth, getHostelById);
-router.patch("/:id", requireOwnerOrAdmin, updateHostel);
-router.delete("/:id", requireOwnerOrAdmin, deleteHostel);
+router.patch("/:id", requireAuth, requireRole("hostel_owner", "maintenance_manager"), validate(updateHostelSchema), updateHostel);
+router.delete("/:id", requireAuth, requireRole("hostel_owner", "maintenance_manager"), deleteHostel);
 
 export default router;

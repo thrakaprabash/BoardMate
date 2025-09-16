@@ -7,7 +7,9 @@ import {
   assignTechnician,
   addComment,
   addAttachment,
+  deleteMaintenance,
 } from "../controllers/maintenanceController";
+import { requireAuth, requireRole } from "../middleware/auth";
 import {
   validate,
   createMaintenanceSchema,
@@ -18,18 +20,15 @@ import {
   addAttachmentSchema,
 } from "../middleware/validation";
 
-// import { requireAuth, requireRole } from "../middleware/auth";
-const requireAuth = (_req: any, _res: any, next: any) => next();
-const requireStaff = (_req: any, _res: any, next: any) => next(); // staff/owner/admin
-
 const router = Router();
 
 router.post("/", requireAuth, validate(createMaintenanceSchema), createRequest);
 router.get("/", requireAuth, validate(listMaintenanceQuerySchema, "query"), listRequests);
 router.get("/:id", requireAuth, getRequestById);
-router.patch("/:id/status", requireAuth, requireStaff, validate(updateStatusSchema), updateStatus);
-router.patch("/:id/assign", requireAuth, requireStaff, validate(assignSchema), assignTechnician);
+router.patch("/:id/status", requireAuth, requireRole("maintenance_manager", "hostel_owner"), validate(updateStatusSchema), updateStatus);
+router.patch("/:id/assign", requireAuth, requireRole("maintenance_manager", "hostel_owner"), validate(assignSchema), assignTechnician);
 router.post("/:id/comments", requireAuth, validate(addCommentSchema), addComment);
 router.post("/:id/attachments", requireAuth, validate(addAttachmentSchema), addAttachment);
+router.delete("/:id", deleteMaintenance)
 
 export default router;

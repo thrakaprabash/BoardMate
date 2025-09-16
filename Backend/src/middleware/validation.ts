@@ -41,13 +41,35 @@ export function validate(
   where: "body" | "query" | "params" = "body"
 ): RequestHandler {
   return (req, res, next) => {
-    const parsed = schema.safeParse(req[where]);
+    let data;
+    if (where === "body") {
+      data = req.body;
+    } else if (where === "query") {
+      data = req.query; // Access to trigger Express's internal parsing
+    } else if (where === "params") {
+      data = req.params;
+    } else {
+      return res.status(500).json({ message: "Invalid validation location" });
+    }
+
+    const parsed = schema.safeParse(data);
     if (!parsed.success) {
       return res
         .status(400)
         .json({ message: "Validation error", errors: parsed.error.flatten() });
     }
-    (req as any)[where] = parsed.data; // normalized & coerced
+
+    if (where === "query") {
+      // Override the getter for query
+      Object.defineProperty(req, "query", {
+        value: parsed.data,
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
+    } else {
+      (req as any)[where] = parsed.data; // normalized & coerced
+    }
     next();
   };
 }
@@ -55,19 +77,27 @@ export function validate(
 /** Common param schema for :id routes (use with validate(paramIdSchema, "params")) */
 export const paramIdSchema = z.object({ id: objectId });
 
-/* =========
-   Users
-   ========= */
+/* =====
+   Auth
+   ===== */
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
 
-export const createUserSchema = z.object({
+export const registerSchema = z.object({
   name: z.string().min(2).max(100),
   username: z.string().min(3).max(50),
   email: z.string().email(),
-  role: roleEnum.default("student").optional(),
-  status: statusActiveEnum.default("active").optional(),
-  // For now controllers expect passwordHash (hash it at creation in controller/service)
-  passwordHash: z.string().min(10, "passwordHash should be a hash"),
+  role: roleEnum.default("student"),
+  status: statusActiveEnum.default("active"),
+  password: z.string().min(6),
 });
+
+/* =========
+   Users
+   ========= */
+export const createUserSchema = registerSchema;
 
 export const updateUserSchema = z.object({
   name: z.string().min(2).max(100).optional(),
@@ -75,13 +105,13 @@ export const updateUserSchema = z.object({
   email: z.string().email().optional(),
   role: roleEnum.optional(),
   status: statusActiveEnum.optional(),
-  passwordHash: z.string().min(10).optional(),
+  password: z.string().min(6).optional(),
 });
 
 export const listUsersQuerySchema = z.object({
+  search: z.string().optional(),
   role: roleEnum.optional(),
   status: statusActiveEnum.optional(),
-  search: z.string().optional(),
   page: pageQ,
   limit: limitQ,
 });
@@ -89,15 +119,15 @@ export const listUsersQuerySchema = z.object({
 /* =========
    Hostels
    ========= */
-
 export const createHostelSchema = z.object({
   owner_id: objectId,
-  name: z.string().min(2).max(120),
-  location: z.string().min(2).max(200),
-  facilities: z.array(z.string()).optional(),
+  name: z.string().min(1).max(100),
+  location: z.string().min(1).max(200),
+  facilities: z.array(z.string()).default([]),
   contact: z.string().optional(),
   description: z.string().optional(),
 });
+
 export const updateHostelSchema = createHostelSchema.partial();
 
 export const listHostelsQuerySchema = z.object({
@@ -107,37 +137,35 @@ export const listHostelsQuerySchema = z.object({
   limit: limitQ,
 });
 
-/* ========
+/* ======
    Rooms
-   ======== */
-
+   ====== */
 export const createRoomSchema = z.object({
   hostel_id: objectId,
   type: z.string().min(1).max(50),
   capacity: z.coerce.number().int().min(1),
   rent: z.coerce.number().min(0),
-  amenities: z.array(z.string()).optional(),
-  availability_status: boolFromQuery.optional(), // body can be boolean or "true"/"false"
+  amenities: z.array(z.string()).default([]),
+  availability_status: boolFromQuery.default(true),
 });
 
 export const updateRoomSchema = createRoomSchema.partial();
+
+export const listRoomsQuerySchema = z.object({
+  hostel: objectId.optional(),
+  available: boolFromQuery.optional(),
+  type: z.string().optional(),
+  page: pageQ,
+  limit: limitQ,
+});
 
 export const setAvailabilitySchema = z.object({
   availability_status: boolFromQuery,
 });
 
-export const listRoomsQuerySchema = z.object({
-  hostel: objectId.optional(),
-  type: z.string().optional(),
-  availability_status: boolFromQuery.optional(),
-  page: pageQ,
-  limit: limitQ,
-});
-
-/* ==========
+/* =========
    Bookings
-   ========== */
-
+   ========= */
 const bookingStatusEnum = z.enum([
   "pending",
   "confirmed",
@@ -151,18 +179,11 @@ export const createBookingSchema = z.object({
   user_id: objectId,
   start_date: z.coerce.date(),
   end_date: z.coerce.date(),
-  status: bookingStatusEnum.optional(),
+  status: bookingStatusEnum.default("pending").optional(),
   payment_id: objectId.optional(),
 });
 
-export const updateBookingSchema = z.object({
-  room_id: objectId.optional(),
-  user_id: objectId.optional(),
-  start_date: z.coerce.date().optional(),
-  end_date: z.coerce.date().optional(),
-  status: bookingStatusEnum.optional(),
-  payment_id: objectId.optional(),
-});
+export const updateBookingSchema = createBookingSchema.partial();
 
 export const listBookingsQuerySchema = z.object({
   user: objectId.optional(),
@@ -172,84 +193,9 @@ export const listBookingsQuerySchema = z.object({
   limit: limitQ,
 });
 
-/* ============
-   Inventory
-   ============ */
-
-const itemStatusEnum = z.enum(["active", "inactive", "low", "out"]);
-
-export const createItemSchema = z.object({
-  hostel_id: objectId.optional(),
-  name: z.string().min(1).max(120),
-  quantity: z.coerce.number().min(0).default(0),
-  min_level: z.coerce.number().min(0).default(0),
-  status: itemStatusEnum.default("active").optional(),
-});
-
-export const updateItemSchema = createItemSchema.partial();
-
-export const adjustQuantitySchema = z.object({
-  delta: z.coerce.number(),
-});
-
-export const listItemsQuerySchema = z.object({
-  status: itemStatusEnum.optional(),
-  search: z.string().optional(),
-  page: pageQ,
-  limit: limitQ,
-});
-
-/* ======================
-   Maintenance Requests
-   ====================== */
-
-export const createMaintenanceSchema = z.object({
-  requester: objectId.optional(), // can derive from req.user.id
-  hostel: objectId,
-  room: objectId,
-  issueDetails: z.string().min(5).max(1000),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
-  attachments: z
-    .array(z.object({ url: z.string().url(), label: z.string().optional() }))
-    .optional(),
-});
-
-export const listMaintenanceQuerySchema = z.object({
-  status: z
-    .enum(["open", "in_progress", "resolved", "closed", "cancelled"])
-    .optional(),
-  hostel: objectId.optional(),
-  room: objectId.optional(),
-  requester: objectId.optional(),
-  assignedTo: objectId.optional(),
-  search: z.string().optional(),
-  page: pageQ,
-  limit: limitQ,
-  sort: z.enum(["new", "old", "priority"]).default("new"),
-});
-
-export const updateStatusSchema = z.object({
-  status: z.enum(["open", "in_progress", "resolved", "closed", "cancelled"]),
-});
-
-export const assignSchema = z.object({
-  assignedTo: objectId,
-});
-
-export const addCommentSchema = z.object({
-  note: z.string().min(1).max(1000),
-  by: objectId.optional(), // can derive from req.user.id
-});
-
-export const addAttachmentSchema = z.object({
-  url: z.string().url(),
-  label: z.string().optional(),
-});
-
-/* ==========
+/* =========
    Payments
-   ========== */
-
+   ========= */
 const paymentStatusEnum = z.enum([
   "pending",
   "paid",
@@ -263,11 +209,12 @@ const paymentStatusEnum = z.enum([
 export const createPaymentSchema = z.object({
   user_id: objectId,
   booking_id: objectId.optional(),
-  amount: z.coerce.number().positive(),
-  currency: z.string().min(3).max(5).default("LKR"),
+  amount: z.coerce.number().min(0),
+  currency: z.string().default("LKR"),
   date: z.coerce.date().optional(),
-  method: z.string().min(2).max(50),
-  status: paymentStatusEnum.optional(),
+  method: z.string().min(1),
+  status: paymentStatusEnum,
+  refundOf: objectId.optional(),
 });
 
 export const updatePaymentSchema = createPaymentSchema.partial();
@@ -275,38 +222,123 @@ export const updatePaymentSchema = createPaymentSchema.partial();
 export const listPaymentsQuerySchema = z.object({
   user: objectId.optional(),
   status: paymentStatusEnum.optional(),
-  method: z.string().optional(),
-  from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
   page: pageQ,
   limit: limitQ,
 });
 
-/* ==========
-   Feedback
-   ========== */
+export const refundPaymentSchema = z.object({
+  amount: z.coerce.number().min(0).optional(),
+});
 
+/* =========
+   Feedback
+   ========= */
 export const createFeedbackSchema = z.object({
   user_id: objectId,
   hostel_id: objectId.optional(),
   room_id: objectId.optional(),
   comments: z.string().min(1).max(2000),
-  rating: z.coerce.number().int().min(1).max(5).optional(),
+  rating: z.coerce.number().int().min(1).max(5),
   date: z.coerce.date().optional(),
 });
 
 export const listFeedbackQuerySchema = z.object({
-  user: objectId.optional(),
   hostel: objectId.optional(),
   room: objectId.optional(),
   page: pageQ,
   limit: limitQ,
 });
 
-/* ===========
-   Complaints
-   =========== */
+/* =========
+   Inventory
+   ========= */
+const inventoryStatusEnum = z.enum(["active", "inactive", "low", "out"]);
 
+export const createInventorySchema = z.object({
+  hostel_id: objectId.optional(),
+  name: z.string().min(1).max(100),
+  quantity: z.coerce.number().int().min(0),
+  min_level: z.coerce.number().int().min(0),
+  status: inventoryStatusEnum.optional(),
+});
+
+export const listInventoryQuerySchema = z.object({
+  search: z.string().optional(),
+  status: inventoryStatusEnum.optional(),
+  page: pageQ,
+  limit: limitQ,
+});
+
+export const updateInventorySchema = z.object({
+  hostel_id: objectId.optional(),
+  name: z.string().min(1).max(100).optional(),
+  quantity: z.coerce.number().int().min(0).optional(),
+  min_level: z.coerce.number().int().min(0).optional(),
+  status: inventoryStatusEnum.optional(),
+});
+
+export const adjustQuantitySchema = z.object({
+  quantity: z.coerce.number().int(),
+});
+
+/* =========
+   Maintenance
+   ========= */
+const maintenanceStatusEnum = z.enum([
+  "open",
+  "in_progress",
+  "resolved",
+  "closed",
+  "cancelled",
+]);
+
+const priorityEnum = z.enum(["low", "medium", "high", "urgent"]);
+
+export const createMaintenanceSchema = z.object({
+  requester: objectId.optional(),
+  hostel: objectId,
+  room: objectId,
+  issueDetails: z.string().min(1).max(2000),
+  status: maintenanceStatusEnum.default("open").optional(),
+  priority: priorityEnum.default("medium").optional(),
+  assignedTo: objectId.optional(),
+  attachments: z.array(z.object({ url: z.string().url(), label: z.string().optional() })).optional(),
+});
+
+export const listMaintenanceQuerySchema = z.object({
+  status: maintenanceStatusEnum.optional(),
+  hostel: objectId.optional(),
+  room: objectId.optional(),
+  requester: objectId.optional(),
+  assignedTo: objectId.optional(),
+  search: z.string().optional(),
+  sort: z.enum(["new", "old", "priority"]).optional(),
+  page: pageQ,
+  limit: limitQ,
+});
+
+export const updateStatusSchema = z.object({
+  status: maintenanceStatusEnum,
+});
+
+export const assignSchema = z.object({
+  assignedTo: objectId,
+});
+
+export const addCommentSchema = z.object({
+  by: objectId.optional(),
+  note: z.string().min(1).max(1000),
+  at: z.coerce.date().optional(),
+});
+
+export const addAttachmentSchema = z.object({
+  url: z.string().url(),
+  label: z.string().optional(),
+});
+
+/* =========
+   Complaints
+   ========= */
 const complaintStatusEnum = z.enum(["open", "in_progress", "resolved", "closed"]);
 
 export const createComplaintSchema = z.object({
@@ -346,3 +378,6 @@ export const listNoticesQuerySchema = z.object({
   page: pageQ,
   limit: limitQ,
 });
+
+// Add this to your `validation.ts` file
+export const revenueByMonthQuerySchema = z.object({});

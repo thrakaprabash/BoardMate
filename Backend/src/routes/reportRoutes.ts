@@ -4,15 +4,16 @@ import {
   revenueByMonth,
   ratingSummary,
 } from "../controllers/reportController";
-
-// import { requireAuth, requireRole } from "../middleware/auth";
-const requireAuth = (_req: any, _res: any, next: any) => next();
-const requireAdmin = (_req: any, _res: any, next: any) => next();
+import { requireAuth, requireRole } from "../middleware/auth";
+import {
+  validate,
+  revenueByMonthQuerySchema,
+} from "../middleware/validation";
 
 const router = Router();
 
-router.get("/summary", requireAuth, getSummary);
-router.get("/revenue/monthly", requireAdmin, revenueByMonth);
-router.get("/ratings/summary", requireAuth, ratingSummary);
+router.get("/summary", requireAuth, requireRole("hostel_owner", "maintenance_manager"), getSummary);
+router.get("/revenue/monthly", requireAuth, requireRole("hostel_owner", "maintenance_manager"), validate(revenueByMonthQuerySchema, "query"), revenueByMonth);
+router.get("/ratings/summary", requireAuth, requireRole("hostel_owner", "maintenance_manager"), ratingSummary);
 
 export default router;

@@ -9,20 +9,23 @@ import {
   checkOut,
   deleteBooking,
 } from "../controllers/bookingController";
-
-// import { requireAuth, requireRole } from "../middleware/auth";
-const requireAuth = (_req: any, _res: any, next: any) => next();
-const requireStaffOrOwner = (_req: any, _res: any, next: any) => next();
+import { requireAuth, requireRole, requireSelfOrRole } from "../middleware/auth";
+import {
+  validate,
+  createBookingSchema,
+  listBookingsQuerySchema,
+  updateBookingSchema,
+} from "../middleware/validation";
 
 const router = Router();
 
-router.get("/", requireAuth, listBookings);
-router.post("/", requireAuth, createBooking);
+router.get("/", requireAuth, validate(listBookingsQuerySchema, "query"), listBookings);
+router.post("/", requireAuth, validate(createBookingSchema), createBooking);
 router.get("/:id", requireAuth, getBookingById);
-router.patch("/:id", requireAuth, updateBooking);
+router.patch("/:id", requireAuth, validate(updateBookingSchema), updateBooking);
 router.patch("/:id/cancel", requireAuth, cancelBooking);
-router.patch("/:id/check-in", requireStaffOrOwner, checkIn);
-router.patch("/:id/check-out", requireStaffOrOwner, checkOut);
-router.delete("/:id", requireStaffOrOwner, deleteBooking);
+router.patch("/:id/check-in", requireAuth, requireRole("room_manager", "hostel_owner", "maintenance_manager"), checkIn);
+router.patch("/:id/check-out", requireAuth, requireRole("room_manager", "hostel_owner", "maintenance_manager"), checkOut);
+router.delete("/:id", requireAuth, requireRole("room_manager", "hostel_owner", "maintenance_manager"), deleteBooking);
 
 export default router;

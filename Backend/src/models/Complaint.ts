@@ -1,14 +1,52 @@
-import { Schema, model, Types, InferSchemaType } from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 
-const complaintSchema = new Schema({
-  user_id: { type: Types.ObjectId, ref: "User", required: true, index: true },
-  hostel_id: { type: Types.ObjectId, ref: "Hostel", index: true },
-  room_id: { type: Types.ObjectId, ref: "Room", index: true },
-  description: { type: String, required: true, trim: true },
-  status: { type: String, enum: ["open", "in_progress", "resolved", "closed"], default: "open", index: true },
-}, { timestamps: true });
+export type ComplaintStatus = "open" | "in_progress" | "resolved" | "closed" | "rejected";
 
-complaintSchema.index({ hostel_id: 1, status: 1, createdAt: -1 });
+export interface IComplaintComment {
+  note: string;
+  by?: Types.ObjectId | string; // can be user/technician id or a plain label
+  at: Date;
+}
 
-export type Complaint = InferSchemaType<typeof complaintSchema>;
-export default model<Complaint>("Complaint", complaintSchema);
+export interface IComplaint extends Document {
+  subject: string;
+  description?: string;
+  user?: Types.ObjectId;        // ref User
+  assignedTo?: Types.ObjectId;  // ref Technician
+  status: ComplaintStatus;
+  resolvedAt?: Date;
+  comments: IComplaintComment[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const ComplaintSchema = new Schema<IComplaint>(
+  {
+    subject: { type: String, required: true, trim: true },
+    description: { type: String, trim: true },
+    user: { type: Schema.Types.ObjectId, ref: "User", index: true },
+    assignedTo: { type: Schema.Types.ObjectId, ref: "Technician", index: true },
+    status: {
+      type: String,
+      enum: ["open", "in_progress", "resolved", "closed", "rejected"],
+      default: "open",
+      index: true,
+    },
+    resolvedAt: { type: Date },
+    comments: [
+      new Schema<IComplaintComment>(
+        {
+          note: { type: String, required: true, trim: true },
+          by: { type: Schema.Types.Mixed }, // ObjectId or string
+          at: { type: Date, default: Date.now },
+        },
+        { _id: false }
+      ),
+    ],
+  },
+  { timestamps: true }
+);
+
+ComplaintSchema.index({ subject: "text", description: "text" });
+
+export default model<IComplaint>("Complaint", ComplaintSchema);

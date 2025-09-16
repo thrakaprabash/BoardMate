@@ -4,19 +4,22 @@ import {
   listComplaints,
   getComplaintById,
   updateComplaintStatus,
+  assignComplaint,
+  addComplaintComment,
   deleteComplaint,
 } from "../controllers/complaintController";
 
-// import { requireAuth, requireRole } from "../middleware/auth";
-const requireAuth = (_req: any, _res: any, next: any) => next();
-const requireStaffOrAdmin = (_req: any, _res: any, next: any) => next();
-
 const router = Router();
 
-router.get("/", requireAuth, listComplaints);
-router.post("/", requireAuth, createComplaint);
-router.get("/:id", requireAuth, getComplaintById);
-router.patch("/:id/status", requireStaffOrAdmin, updateComplaintStatus);
-router.delete("/:id", requireStaffOrAdmin, deleteComplaint);
+// list & create
+router.get("/", listComplaints);
+router.post("/", createComplaint);
+
+// item & actions
+router.get("/:id", getComplaintById);
+router.patch("/:id/status", updateComplaintStatus);  // used by UI
+router.patch("/:id/assign", assignComplaint);        // used by UI
+router.post("/:id/comments", addComplaintComment);
+router.delete("/:id", deleteComplaint);
 
 export default router;

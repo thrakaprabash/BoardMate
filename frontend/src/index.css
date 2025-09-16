@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* ===== Night Dashboard helpers ===== */
+
+/* 1) Hide accidental empty buttons (fixes tiny white rounded pills) */
+button:empty { display: none; }
+
+/* 2) Dark theme for native <select> dropdowns (Windows/Chrome/Edge/Firefox) */
+select.dark-native,
+select.dark-native option,
+select.dark-native optgroup {
+  background-color: #0f172a; /* slate-900-ish */
+  color: #ffffff;
+}
+
+/* Improve focus + remove default inner padding border on FF */
+button::-moz-focus-inner { border: 0; padding: 0; }
+select.dark-native:focus { outline: none; }
