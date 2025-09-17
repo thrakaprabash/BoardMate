@@ -85,7 +85,6 @@ export default function RoomManagerDashboard() {
   useEffect(() => {
     (async () => {
       try {
-        // backend validator expects page + limit <= 100
         const [r, b, h, u] = await Promise.all([
           api.get("/rooms", { params: { page: 1, limit: 100 } }),
           api.get("/bookings", { params: { page: 1, limit: 50 } }),
@@ -105,12 +104,20 @@ export default function RoomManagerDashboard() {
   }, []);
 
   const refreshRooms = async () => {
-    const r = await api.get("/rooms", { params: { page: 1, limit: 100 } });
-    setRooms(getArr(r));
+    try {
+      const r = await api.get("/rooms", { params: { page: 1, limit: 100 } });
+      setRooms(getArr(r));
+    } catch (e) {
+      toast(e?.response?.data?.message || "Failed to refresh rooms", true);
+    }
   };
   const refreshBookings = async () => {
-    const b = await api.get("/bookings", { params: { page: 1, limit: 50 } });
-    setBookings(getArr(b));
+    try {
+      const b = await api.get("/bookings", { params: { page: 1, limit: 50 } });
+      setBookings(getArr(b));
+    } catch (e) {
+      toast(e?.response?.data?.message || "Failed to refresh bookings", true);
+    }
   };
 
   // label maps
@@ -142,25 +149,34 @@ export default function RoomManagerDashboard() {
   }, [rooms, hostelNameById]);
 
   // stats
-  const available = rooms.filter((r) => r.availability_status).length;
-  const occupied = rooms.length - available;
-  const stats = useMemo(
-    () => ({
-      available,
-      occupied,
-      pending: bookings.filter((b) => b.status === "pending").length,
-      checkinsToday: bookings.filter((b) => {
-        const d = (b.start_date || "").slice(0, 10);
-        return b.status === "confirmed" && d === todayYMD();
-      }).length,
-    }),
-    [rooms, bookings]
-  );
+  const stats = useMemo(() => {
+    const today = todayYMD();
+    // Get rooms with active bookings (confirmed or checked_in, overlapping today)
+    const occupiedRoomIds = new Set(
+      bookings
+        .filter((b) => ["confirmed", "checked_in"].includes(b.status))
+        .filter((b) => {
+          const start = new Date(b.start_date).toISOString().slice(0, 10);
+          const end = new Date(b.end_date).toISOString().slice(0, 10);
+          return start <= today && today <= end;
+        })
+        .map((b) => (typeof b.room_id === "object" && b.room_id?._id ? b.room_id._id : b.room_id))
+    );
+    const occupied = occupiedRoomIds.size;
+    const available = rooms.length - occupied;
+    const pending = bookings.filter((b) => b.status === "pending").length;
+    const checkinsToday = bookings.filter((b) => {
+      const checkinDate = new Date(b.start_date).toISOString().slice(0, 10);
+      return b.status === "checked_in" && checkinDate === today;
+    }).length;
+
+    return { available, occupied, pending, checkinsToday };
+  }, [rooms, bookings]);
 
   // ---- room actions
   const onToggleAvailability = async (room) => {
     try {
-      await api.patch(`/rooms/${room._id}`, { availability_status: !room.availability_status });
+      await api.patch(`/rooms/${room._id}/availability`, { availability_status: !room.availability_status });
       toast("Availability updated");
       await refreshRooms();
     } catch (e) {
@@ -257,8 +273,8 @@ export default function RoomManagerDashboard() {
     setEditBooking({
       id: bk._id,
       room_id: typeof bk.room_id === "object" && bk.room_id?._id ? bk.room_id._id : bk.room_id,
-      start_date: (bk.start_date || "").slice(0, 10) || todayYMD(),
-      end_date: (bk.end_date || "").slice(0, 10) || todayYMD(),
+      start_date: bk.start_date ? new Date(bk.start_date).toISOString().slice(0, 10) : todayYMD(),
+      end_date: bk.end_date ? new Date(bk.end_date).toISOString().slice(0, 10) : todayYMD(),
     });
     setShowEditBooking(true);
   };
@@ -440,6 +456,9 @@ export default function RoomManagerDashboard() {
               onChange={(e) => setCreateRoom((f) => ({ ...f, hostel_id: e.target.value }))}
               required
             >
+              <option value="" disabled>
+                Select a hostel…
+              </option>
               {hostels.map((h) => (
                 <option key={h._id} value={h._id}>
                   {hostelNameById.get(h._id)}
@@ -561,6 +580,9 @@ export default function RoomManagerDashboard() {
                 value={editBooking.room_id}
                 onChange={(e) => setEditBooking((f) => ({ ...f, room_id: e.target.value }))}
               >
+                <option value="" disabled>
+                  Select a room…
+                </option>
                 {rooms.map((r) => (
                   <option key={r._id} value={r._id}>
                     {roomLabelById.get(r._id)}

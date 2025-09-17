@@ -1,6 +1,7 @@
 // src/pages/student/StudentDashboard.jsx
 // Full student dashboard: bookings, payments, availability, feedback, complaints.
 // FIXED: Upcoming excludes completed-by-date/status; dues ignore completed.
+// FIXED: Check availability button now accurately reflects room availability.
 
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
@@ -59,7 +60,7 @@ const overlaps = (aStart, aEnd, bStart, bEnd) => {
   const A1 = new Date(aStart), A2 = new Date(aEnd);
   const B1 = new Date(bStart), B2 = new Date(bEnd);
   if ([A1, A2, B1, B2].some(d => isNaN(d))) return false;
-  return A1 < B2 && B1 < A2;
+  return A1 <= B2 && B1 <= A2;
 };
 
 // safe GET across multiple paths
@@ -75,7 +76,13 @@ async function safeGet(paths, withParams) {
 
 /* ---------------- availability (server → fallback) ---------------- */
 const checkRoomAvailability = async ({ roomId, hostelId, start, end, allBookings }) => {
+  // Validate inputs
+  if (!roomId || !start || !end) {
+    return { available: false, message: "Missing room ID or dates" };
+  }
+
   try {
+    // Primary API check
     const resp = await api.post("/bookings/check-availability", {
       room_id: roomId,
       hostel_id: hostelId,
@@ -83,26 +90,42 @@ const checkRoomAvailability = async ({ roomId, hostelId, start, end, allBookings
       end_date: end,
     });
     const data = resp?.data;
-    if (typeof data?.available !== "undefined") return !!data.available;
-    if (typeof data?.isAvailable !== "undefined") return !!data.isAvailable;
-    if (Array.isArray(data?.conflicts)) return data.conflicts.length === 0;
-  } catch {}
+    if (typeof data?.available !== "undefined") {
+      return { available: !!data.available, message: data.message || (data.available ? "Room is available" : "Room is not available") };
+    }
+    if (typeof data?.isAvailable !== "undefined") {
+      return { available: !!data.isAvailable, message: data.message || (data.isAvailable ? "Room is available" : "Room is not available") };
+    }
+    if (Array.isArray(data?.conflicts)) {
+      return { available: data.conflicts.length === 0, message: data.conflicts.length === 0 ? "Room is available" : `Room has ${data.conflicts.length} conflicting bookings` };
+    }
+  } catch (e) {
+    console.error("API availability check failed:", e?.response?.data?.message || e.message);
+  }
 
+  // Fallback to room-specific availability endpoint
   for (const p of [`/rooms/${roomId}/availability`, `/room/${roomId}/availability`]) {
     try {
       const { data } = await api.get(p, { params: { start_date: start, end_date: end } });
-      if (typeof data?.available !== "undefined") return !!data.available;
-      if (typeof data?.isAvailable !== "undefined") return !!data.isAvailable;
-      if (Array.isArray(data?.conflicts)) return data.conflicts.length === 0;
+      if (typeof data?.available !== "undefined") {
+        return { available: !!data.available, message: data.message || (data.available ? "Room is available" : "Room is not available") };
+      }
+      if (typeof data?.isAvailable !== "undefined") {
+        return { available: !!data.isAvailable, message: data.message || (data.isAvailable ? "Room is available" : "Room is not available") };
+      }
+      if (Array.isArray(data?.conflicts)) {
+        return { available: data.conflicts.length === 0, message: data.conflicts.length === 0 ? "Room is available" : `Room has ${data.conflicts.length} conflicting bookings` };
+      }
     } catch {}
   }
 
-  const conflicts = (allBookings || []).some(b =>
+  // Local fallback: check for conflicts in allBookings
+  const conflicts = (allBookings || []).filter(b =>
     String(b.room_id) === String(roomId) &&
     overlaps(start, end, b.start_date || b.startDate || b.start, b.end_date || b.endDate || b.end) &&
     toLower(b.status) !== "cancelled"
   );
-  return !conflicts;
+  return { available: conflicts.length === 0, message: conflicts.length === 0 ? "Room is available (local check)" : `Room has ${conflicts.length} conflicting bookings` };
 };
 
 /* --------------------------------- styling --------------------------------- */
@@ -143,7 +166,7 @@ export default function StudentDashboard() {
 
   // core data
   const [hostels, setHostels] = useState([]);
-  const [rooms, setRooms] = useState([]);            // rooms for selected hostel/date range
+  const [rooms, setRooms] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [payments, setPayments] = useState([]);
   const [notices, setNotices] = useState([]);
@@ -154,7 +177,9 @@ export default function StudentDashboard() {
 
   // UI state
   const [search, setSearch] = useState("");
-  const [bookingTab, setBookingTab] = useState("active"); // active|completed|all
+  const [bookingTab, setBookingTab] = useState("active");
+  const [availMsg, setAvailMsg] = useState("");
+  const [availLoading, setAvailLoading] = useState(false);
 
   // toasts
   const [ok, setOk] = useState("");
@@ -255,7 +280,6 @@ export default function StudentDashboard() {
     ];
     for (const p of PATH_TRIES) { const got = await tryGet(p); if (got) { setLoadingRooms(false); return got; } }
 
-    // Do not force availability here; we compute / display flag column
     const baseBody = { hostel_id: hostelId, start_date, end_date };
     const POST_TRIES = [
       { path: "/rooms/search", body: baseBody },
@@ -291,7 +315,7 @@ export default function StudentDashboard() {
       const r = await loadRoomsForHostel(defaultHostel, bookForm.start_date, bookForm.end_date);
       setRooms(r);
       const rm = {}; r.forEach(x => { const id = x._id || x.id; if (id) rm[id] = x; });
-      setRoomMap(m => ({ ...rm, ...m }));
+      setRoomMap(m => ({ ...m, ...rm }));
 
       const b = await fetchWithParamFallback(
         "/bookings",
@@ -305,10 +329,22 @@ export default function StudentDashboard() {
       );
       setBookings(b);
 
-      // warm caches
-      const roomIds = new Set((b || []).map(x => x.room_id).filter(Boolean));
-      const hostelIds = new Set((b || []).map(x => x.hostel_id || x.hostelId).filter(Boolean));
-      await Promise.all([...roomIds].map(ensureRoom));
+      // Fetch all bookings for the selected room to improve local availability check
+      const roomIds = new Set(r.map(x => x._id || x.id).filter(Boolean));
+      const roomBookings = await fetchWithParamFallback(
+        "/bookings",
+        { room_id: Array.from(roomIds), limit: 100, sort: "-createdAt" },
+        [
+          { room: Array.from(roomIds), limit: 100, sort: "-createdAt" },
+          { limit: 100, sort: "-createdAt" },
+        ]
+      );
+      setBookings(prev => [...prev, ...roomBookings.filter(rb => !prev.some(pb => pb._id === rb._id))]);
+
+      // Warm caches
+      const allRoomIds = new Set([...roomIds, ...b.map(x => x.room_id).filter(Boolean)]);
+      const hostelIds = new Set([...(b.map(x => x.hostel_id || x.hostelId).filter(Boolean)), ...r.map(x => x.hostel_id || x.hostelId).filter(Boolean)]);
+      await Promise.all([...allRoomIds].map(ensureRoom));
       await Promise.all([...hostelIds].map(ensureHostel));
 
       const p = await fetchWithParamFallback(
@@ -340,36 +376,31 @@ export default function StudentDashboard() {
 
   const refreshLists = async () => { try { await loadAll(); } catch { toast("Refresh failed", true); } };
 
-  useEffect(() => { if (userId) loadAll(); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => { if (userId) loadAll(); }, [userId]);
   useEffect(() => {
     if (!bookings?.length) return;
     const rids = new Set(bookings.map(x => x.room_id).filter(Boolean));
     const hids = new Set(bookings.map(x => x.hostel_id || x.hostelId).filter(Boolean));
     rids.forEach(ensureRoom);
     hids.forEach(ensureHostel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookings]);
 
   /* ---------- derived stats (fixed upcoming vs completed + dues) ---------- */
   const stats = useMemo(() => {
     const activeStatuses = new Set(["pending", "confirmed", "checked_in"]);
 
-    // Upcoming: active status AND not completed by status/date
     const upcoming = (bookings || []).filter((b) => {
       const st = toLower(b?.status);
       if (!activeStatuses.has(st)) return false;
       return !isCompletedBooking(b);
     }).length;
 
-    // Completed: by status OR end-date in the past (and not cancelled)
     const completed = (bookings || []).filter(isCompletedBooking).length;
 
-    // Total paid (successful payments only)
     const paidTotal = (payments || [])
       .filter(isSuccessPayment)
       .reduce((s, x) => s + (Number(x.amount) || 0), 0);
 
-    // Outstanding dues across ACTIVE & NOT COMPLETED bookings
     const dues = (bookings || []).reduce((sumDue, bk) => {
       const st = toLower(bk?.status);
       if (!activeStatuses.has(st)) return sumDue;
@@ -420,6 +451,17 @@ export default function StudentDashboard() {
     if (!bookForm.hostel_id) return toast("Select a hostel", true);
     if (!bookForm.room_id || !bookForm.start_date || !bookForm.end_date) return toast("Select room and dates", true);
     try {
+      const { available, message } = await checkRoomAvailability({
+        roomId: bookForm.room_id,
+        hostelId: bookForm.hostel_id,
+        start: bookForm.start_date,
+        end: bookForm.end_date,
+        allBookings: bookings,
+      });
+      if (!available) {
+        toast(message || "Room not available for the selected dates", true);
+        return;
+      }
       await api.post("/bookings", { ...bookForm, user_id: userId });
       setShowBook(false); toast("Booking created"); await refreshLists();
     } catch (e2) { toast(e2?.response?.data?.message || "Booking failed", true); }
@@ -429,6 +471,19 @@ export default function StudentDashboard() {
     e.preventDefault();
     if (!editForm.id) return toast("Missing booking id", true);
     try {
+      const bk = bookings.find(b => b._id === editForm.id);
+      if (!bk) return toast("Booking not found", true);
+      const { available, message } = await checkRoomAvailability({
+        roomId: bk.room_id,
+        hostelId: bk.hostel_id || roomMap[bk.room_id]?.hostel_id,
+        start: editForm.start_date,
+        end: editForm.end_date,
+        allBookings: bookings.filter(b => b._id !== editForm.id), // Exclude the current booking
+      });
+      if (!available) {
+        toast(message || "Room not available for the updated dates", true);
+        return;
+      }
       await api.patch(`/bookings/${editForm.id}`, { start_date: editForm.start_date, end_date: editForm.end_date });
       setShowEdit(false); toast("Booking updated"); await refreshLists();
     } catch (e2) { toast(e2?.response?.data?.message || "Update failed", true); }
@@ -532,44 +587,49 @@ export default function StudentDashboard() {
     } catch (e2) { toast(e2?.response?.data?.message || "Complaint failed", true); }
   };
 
-  /* ------------------------------- availability ------------------------------ */
-  const [availMsg, setAvailMsg] = useState("");
+  /* ------------------------------ availability ------------------------------ */
   const checkAvailabilityAction = async () => {
     setAvailMsg("");
+    setAvailLoading(true);
     const { hostel_id, room_id, start_date, end_date } = bookForm || {};
 
     if (!hostel_id || !start_date || !end_date) {
       setAvailMsg("Select hostel and dates");
+      setAvailLoading(false);
       return;
     }
     if (!room_id) {
       setAvailMsg("Select a room");
+      setAvailLoading(false);
       return;
     }
 
-    // Try local flag from rooms first
-    const present = rooms.find(x => String(x._id || x.id) === String(room_id));
-    let flag;
-    if (present && typeof present.availability_status !== "undefined") flag = !!present.availability_status;
-    if (present && typeof present.available !== "undefined") flag = !!present.available;
-
-    let isAvailable;
-    if (typeof flag === "boolean") {
-      isAvailable = flag;
-    } else {
-      isAvailable = await checkRoomAvailability({
-        roomId: room_id,
-        hostelId: hostel_id,
-        start: start_date,
-        end: end_date,
-        allBookings: bookings,
-      });
+    // Fetch all bookings for the selected room to ensure accurate local check
+    try {
+      const roomBookings = await fetchWithParamFallback(
+        "/bookings",
+        { room_id: room_id, limit: 100, sort: "-createdAt" },
+        [
+          { room: room_id, limit: 100, sort: "-createdAt" },
+          { limit: 100, sort: "-createdAt" },
+        ]
+      );
+      setBookings(prev => [...prev, ...roomBookings.filter(rb => !prev.some(pb => pb._id === rb._id))]);
+    } catch (e) {
+      console.error("Failed to fetch room bookings for availability check:", e?.response?.data?.message || e.message);
     }
 
-    setAvailMsg(isAvailable
-      ? "✅ Selected room is available for the chosen dates."
-      : "❌ Room not available; try another room or dates."
-    );
+    // Check availability
+    const { available, message } = await checkRoomAvailability({
+      roomId: room_id,
+      hostelId: hostel_id,
+      start: start_date,
+      end: end_date,
+      allBookings: bookings,
+    });
+
+    setAvailMsg(message || (available ? "✅ Selected room is available for the chosen dates." : "❌ Room not available; try another room or dates."));
+    setAvailLoading(false);
   };
 
   /* ------------------------------ derived lists ------------------------------ */
@@ -582,9 +642,8 @@ export default function StudentDashboard() {
         const start = new Date(b.start_date || b.startDate || b.start);
         const end = new Date(b.end_date || b.endDate || b.end);
         const status = toLower(b.status);
-        const timeActive = !isNaN(start) && !isNaN(end) ? end >= now : true;
-        const statusActive = ["pending","confirmed","checked_in"].includes(status);
-        // visible in "Active" if either time says not ended yet OR status is active, but not completed
+        const timeActive = !isNaN(end) ? end >= now : true;
+        const statusActive = ["pending", "confirmed", "checked_in"].includes(status);
         return (timeActive || statusActive) && !isCompletedBooking(b);
       });
     } else if (bookingTab === "completed") {
@@ -596,7 +655,7 @@ export default function StudentDashboard() {
       list = list.filter(b => {
         const host = bookingHostelLabel(b)?.toLowerCase() || "";
         const room = roomLabel(b.room_id)?.toLowerCase() || "";
-        return host.includes(q) || room.includes(q) || String(b.status||"").toLowerCase().includes(q);
+        return host.includes(q) || room.includes(q) || String(b.status || "").toLowerCase().includes(q);
       });
     }
 
@@ -605,7 +664,6 @@ export default function StudentDashboard() {
         new Date(a.start_date || a.startDate || a.start) -
         new Date(b.start_date || b.startDate || b.start)
     );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookings, bookingTab, search, rooms, hostels, roomMap, hostelMap]);
 
   /* ---------------------------------- UI ---------------------------------- */
@@ -686,7 +744,7 @@ export default function StudentDashboard() {
                 { key: "hostel", header: "Hostel", render: (r) => bookingHostelLabel(r) },
                 { key: "room", header: "Room", render: (r) => roomLabel(r.room_id) },
                 { key: "start_date", header: "Start", render: (r) => fmtD(r.start_date || r.startDate || r.start) },
-                { key: "end_date", header: "End", render: (r) => fmtD(r.end_date || r.endDate || r.end) },
+                { key: "end_date", header: "End", render: (r) => fmtD(r.end_date || b.endDate || r.end) },
                 { key: "status", header: "Status", render: (r) => (
                   <span className="chip rounded-md px-2 py-1 text-xs capitalize">{String(r.status||"").replace("_"," ")}</span>
                 )},
@@ -874,7 +932,7 @@ export default function StudentDashboard() {
                       const flag = typeof r.availability_status !== "undefined"
                         ? r.availability_status
                         : (typeof r.available !== "undefined" ? r.available : undefined);
-                      const disabled = flag === false; // only disable if we *know* it's unavailable
+                      const disabled = flag === false;
                       const selected = String(bookForm.room_id) === String(r._id || r.id);
                       return (
                         <button
@@ -903,7 +961,14 @@ export default function StudentDashboard() {
           )}
 
           <div className="flex items-center gap-3">
-            <button type="button" onClick={checkAvailabilityAction} className="btn-ghost rounded-lg px-3 py-2 text-sm">Check availability</button>
+            <button
+              type="button"
+              onClick={checkAvailabilityAction}
+              className="btn-ghost rounded-lg px-3 py-2 text-sm"
+              disabled={availLoading}
+            >
+              {availLoading ? "Checking…" : "Check availability"}
+            </button>
             {availMsg && <span className="text-sm">{availMsg}</span>}
           </div>
 
