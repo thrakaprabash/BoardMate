@@ -24,6 +24,14 @@ const toneForStatus = (s = "") => {
 const tLabel = (t) =>
   [t?.name, t?.email].filter(Boolean).join(" ") + (t?._id ? ` • ${t._id.slice(-6)}` : "");
 
+// NEW: resolve assignee nicely whether it's a populated object or just an id
+const assigneeText = (row, techs) => {
+  if (row?.assignedTo?.name || row?.assignedTo?.email) return tLabel(row.assignedTo);
+  const id = typeof row?.assignedTo === "string" ? row.assignedTo : row?.assignedTo?._id;
+  const t = id ? techs.find((x) => x._id === id) : null;
+  return t ? tLabel(t) : id ? `…${String(id).slice(-6)}` : "—";
+};
+
 function GlassModal({ open, title, onClose, children }) {
   if (!open) return null;
   return (
@@ -127,6 +135,8 @@ export default function ComplaintManage() {
     { key: "subject", header: "Subject",  render: (r) => r.subject || r.title || "—" },
     { key: "status",  header: "Status",   render: (r) => badge(String(r.status || "—").replace("_", " "), toneForStatus(r.status)) },
     { key: "by",      header: "By",       render: (r) => r.user?.name || r.user?.email || r.user?._id?.slice(-6) || "—" },
+    // NEW: Assignee column
+    { key: "assignee", header: "Assignee", render: (r) => assigneeText(r, techs) },
     { key: "created", header: "Created",  render: (r) => fdt(r.createdAt) },
     {
       key: "actions", header: "Actions", render: (r) => (

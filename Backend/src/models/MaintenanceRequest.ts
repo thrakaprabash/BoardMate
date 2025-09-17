@@ -30,7 +30,7 @@ const maintenanceRequestSchema = new Schema(
       index: true,
     },
     priority: { type: String, enum: ["low", "medium", "high", "urgent"], default: "medium", index: true },
-    assignedTo: { type: Types.ObjectId, ref: "User" },
+    assignedTo: { type: Types.ObjectId, ref: "Technician" },  // CHANGED: ref from "User" to "Technician"
     attachments: [attachmentSchema],
     comments: [commentSchema],
     requestedAt: { type: Date, default: Date.now },
