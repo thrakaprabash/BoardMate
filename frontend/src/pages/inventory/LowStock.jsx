@@ -19,7 +19,6 @@ const tone = (s = "") => {
   return "bg-gray-100/20 text-gray-300"
 }
 
-// fetch all low stock
 async function fetchAllLowStock(apiInstance, baseParams = {}) {
   const pageSize = 100
   let page = 1
@@ -36,8 +35,14 @@ async function fetchAllLowStock(apiInstance, baseParams = {}) {
   return all
 }
 
+async function fetchHostels(apiInstance) {
+  const res = await apiInstance.get("/hostels", { params: { page: 1, limit: 100 } })
+  return getArr(res)
+}
+
 export default function LowStock() {
   const [rows, setRows] = useState([])
+  const [hostels, setHostels] = useState([])
   const [loading, setLoading] = useState(true)
   const [ok, setOk] = useState("")
   const [err, setErr] = useState("")
@@ -55,6 +60,8 @@ export default function LowStock() {
     try {
       const all = await fetchAllLowStock(api, {})
       setRows(all)
+      const hostelList = await fetchHostels(api)
+      setHostels(hostelList)
     } catch (e) {
       console.error("LowStock load error:", e?.response?.data || e?.message || e)
       toast(e?.response?.data?.message || "Failed to load low stock", true)
@@ -62,6 +69,7 @@ export default function LowStock() {
       setLoading(false)
     }
   }
+
   useEffect(() => {
     load()
   }, [])
@@ -161,7 +169,10 @@ export default function LowStock() {
               {
                 key: "hostel_id",
                 header: "Hostel",
-                render: (r) => (r.hostel_id ? String(r.hostel_id).slice(-6) : "—"),
+                render: (r) => {
+                  const hostel = hostels.find(h => h._id === r.hostel_id);
+                  return hostel ? (hostel.name || hostel._id.slice(-6)) : "—";
+                },
               },
               {
                 key: "actions",

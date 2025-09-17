@@ -19,7 +19,6 @@ const tone = (s = "") => {
   return "bg-gray-100/20 text-gray-300"
 }
 
-// Mini spark bars, themed for dark/glass
 const MiniBars = ({ data }) => {
   if (!data?.length) return null
   const max = Math.max(...data.map(([, v]) => v), 1)
@@ -38,7 +37,6 @@ const MiniBars = ({ data }) => {
   )
 }
 
-// ---- fetch all pages with server cap (limit ≤ 100) ----
 async function fetchAllInventory(apiInstance, baseParams = {}) {
   const pageSize = 100
   let page = 1
@@ -55,8 +53,16 @@ async function fetchAllInventory(apiInstance, baseParams = {}) {
   return all
 }
 
+async function fetchHostels(apiInstance) {
+  const res = await apiInstance.get("/hostels", { params: { page: 1, limit: 100 } })
+  return getArr(res)
+}
+
+const hostelLabel = (h) => (h?.name ? `${h.name}${h.code ? ` (${h.code})` : ""}` : h?._id ?? "Hostel")
+
 export default function InventoryReports() {
   const [items, setItems] = useState([])
+  const [hostels, setHostels] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState("")
 
@@ -65,6 +71,8 @@ export default function InventoryReports() {
     try {
       const all = await fetchAllInventory(api, {})
       setItems(all)
+      const hostelList = await fetchHostels(api)
+      setHostels(hostelList)
     } catch (e) {
       console.error("Inventory reports load error:", e?.response?.data || e?.message || e)
       setErr(e?.response?.data?.message || "Failed to load inventory")
@@ -72,11 +80,11 @@ export default function InventoryReports() {
       setLoading(false)
     }
   }
+
   useEffect(() => {
     load()
   }, [])
 
-  // KPIs
   const kpi = useMemo(() => {
     const total = items.length
     const qtyTotal = items.reduce((s, i) => s + (Number(i.quantity) || 0), 0)
@@ -86,7 +94,6 @@ export default function InventoryReports() {
     return { total, qtyTotal, minSum, low, out }
   }, [items])
 
-  // groupings
   const byStatus = useMemo(() => {
     const m = new Map()
     for (const i of items) {
@@ -99,11 +106,12 @@ export default function InventoryReports() {
   const byHostel = useMemo(() => {
     const m = new Map()
     for (const i of items) {
-      const k = i.hostel_id ? String(i.hostel_id).slice(-6) : "—"
+      const hostel = i.hostel_id ? hostels.find(h => h._id === i.hostel_id) : null
+      const k = hostel ? hostelLabel(hostel) : "—"
       m.set(k, (m.get(k) || 0) + (Number(i.quantity) || 0))
     }
     return Array.from(m.entries()).sort((a, b) => b[1] - a[1])
-  }, [items])
+  }, [items, hostels])
 
   const worst = useMemo(() => {
     const scored = items
@@ -161,7 +169,6 @@ export default function InventoryReports() {
         </div>
       )}
 
-      {/* KPIs */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total items" value={kpi.total} />
         <StatCard title="Total quantity" value={kpi.qtyTotal} />
@@ -198,7 +205,7 @@ export default function InventoryReports() {
             <table className="w-full text-left text-sm text-white">
               <thead className="bg-white/10">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Hostel (suffix)</th>
+                  <th className="px-3 py-2 font-medium">Hostel</th>
                   <th className="px-3 py-2 font-medium">Total qty</th>
                 </tr>
               </thead>
@@ -230,7 +237,10 @@ export default function InventoryReports() {
               {
                 key: "hostel_id",
                 header: "Hostel",
-                render: (r) => (r.hostel_id ? String(r.hostel_id).slice(-6) : "—"),
+                render: (r) => {
+                  const hostel = hostels.find(h => h._id === r.hostel_id)
+                  return hostel ? hostelLabel(hostel) : "—"
+                },
               },
             ]}
             rows={worst}

@@ -260,7 +260,14 @@ export default function InventoryList() {
     },
     { key: "min_level", header: "Min", render: (r) => r.min_level ?? 0 },
     { key: "status", header: "Status", render: (r) => badge(String(r.status || "—"), tone(r.status)) },
-    { key: "hostel_id", header: "Hostel", render: (r) => (r.hostel_id ? String(r.hostel_id).slice(-6) : "—") },
+    {
+      key: "hostel_id",
+      header: "Hostel",
+      render: (r) => {
+        const hostel = hostels.find(h => h._id === r.hostel_id)
+        return hostel ? hostelLabel(hostel) : "—"
+      },
+    },
     { key: "createdAt", header: "Created", render: (r) => fdt(r.createdAt) },
     {
       key: "actions",
@@ -416,7 +423,7 @@ export default function InventoryList() {
                       <option value="">— No hostel —</option>
                       {hostels.map((h) => (
                         <option key={h._id} value={h._id}>
-                          {h.name ? `${h.name}${h.code ? ` (${h.code})` : ""}` : h._id}
+                          {hostelLabel(h)}
                         </option>
                       ))}
                     </select>
@@ -514,7 +521,7 @@ export default function InventoryList() {
                       <option value="">— No hostel —</option>
                       {hostels.map((h) => (
                         <option key={h._id} value={h._id}>
-                          {h.name ? `${h.name}${h.code ? ` (${h.code})` : ""}` : h._id}
+                          {hostelLabel(h)}
                         </option>
                       ))}
                     </select>

@@ -361,7 +361,14 @@ export default function InventoryManagerDashboard() {
         return badge("OK", "bg-emerald-100/20 text-emerald-300")
       },
     },
-    { key: "hostel_id", header: "Hostel", render: (r) => (r.hostel_id ? String(r.hostel_id).slice(-6) : "—") },
+    {
+      key: "hostel_id",
+      header: "Hostel",
+      render: (r) => {
+        const hostel = hostels.find(h => h._id === r.hostel_id)
+        return hostel ? hostelLabel(hostel) : "—"
+      },
+    },
     { key: "createdAt", header: "Created", render: (r) => fdt(r.createdAt) },
     {
       key: "actions",
@@ -388,6 +395,21 @@ export default function InventoryManagerDashboard() {
           </button>
         </div>
       ),
+    },
+  ]
+
+  const lowStockColumns = [
+    { key: "name", header: "Item" },
+    { key: "quantity", header: "Qty" },
+    { key: "min_level", header: "Min" },
+    { key: "status", header: "Status", render: (r) => badge(String(r.status || "—"), toneForStatus(r.status)) },
+    {
+      key: "hostel_id",
+      header: "Hostel",
+      render: (r) => {
+        const hostel = hostels.find(h => h._id === r.hostel_id)
+        return hostel ? hostelLabel(hostel) : "—"
+      },
     },
   ]
 
@@ -488,13 +510,7 @@ export default function InventoryManagerDashboard() {
 
         <Section title="Low stock (qty ≤ min)">
           <DataTable
-            columns={[
-              { key: "name", header: "Item" },
-              { key: "quantity", header: "Qty" },
-              { key: "min_level", header: "Min" },
-              { key: "status", header: "Status", render: (r) => badge(String(r.status || "—"), toneForStatus(r.status)) },
-              { key: "hostel_id", header: "Hostel", render: (r) => (r.hostel_id ? String(r.hostel_id).slice(-6) : "—") },
-            ]}
+            columns={lowStockColumns}
             rows={lowStock}
             emptyText={loading ? "Loading…" : "No low stock items 🎉"}
           />
