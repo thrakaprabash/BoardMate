@@ -12,6 +12,9 @@ function signToken(u: { _id: any; role: string; email?: string }) {
   );
 }
 
+/** (small helper) normalize email */
+const normEmail = (e?: string) => (e ? String(e).trim().toLowerCase() : e);
+
 /**
  * POST /api/auth/login
  * Body: { email: string, password: string }
@@ -24,7 +27,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       return res.status(400).json({ message: "email and password are required" });
     }
 
-    const user = await User.findOne({ email }).lean();
+    const user = await User.findOne({ email: normEmail(email) }).lean();
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
     // Compare plain password with stored hash
@@ -43,9 +46,8 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 };
 
 /**
- * (Optional) POST /api/auth/register   — for quick local testing only.
- * Body: { name, username, email, password, role? }   role defaults to "student".
- * Creates user by hashing the password into passwordHash. Disable in prod if needed.
+ * POST /api/auth/register — quick local testing
+ * Body: { name, username, email, password, role? } (role defaults to "student")
  */
 export const register = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -58,7 +60,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
     const doc = await (await import("../models/User")).default.create({
       name,
       username,
-      email,
+      email: normEmail(email),
       role,
       status: "active",
       passwordHash,
@@ -75,5 +77,43 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       return res.status(409).json({ message: "Duplicate field", fields: e.keyValue });
     }
     next(e);
+  }
+};
+
+/**
+ * POST /api/auth/reset-password  (no email flow)
+ * Body: { email: string, password: string, confirm?: string }
+ * Directly updates the user's passwordHash using the provided email.
+ */
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { email, password, confirm } = req.body as {
+      email?: string;
+      password?: string;
+      confirm?: string;
+    };
+
+    if (!email || !password) {
+      return res.status(400).json({ message: "Email and new password are required" });
+    }
+    if (confirm != null && confirm !== password) {
+      return res.status(400).json({ message: "Passwords do not match" });
+    }
+    // Basic policy (optional): enforce min length
+    if (password.length < 8) {
+      return res.status(400).json({ message: "Password must be at least 8 characters" });
+    }
+
+    const user = await User.findOne({ email: normEmail(email) });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.passwordHash = await bcrypt.hash(password, 10);
+    await user.save();
+
+    return res.json({ message: "Password updated successfully" });
+  } catch (err: any) {
+    return res.status(500).json({ message: "Server error", error: err?.message });
   }
 };

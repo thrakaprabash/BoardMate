@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { login, register } from "../controllers/authController";
-import { validate, loginSchema, registerSchema } from "../middleware/validation";
+import { login, register, resetPassword } from "../controllers/authController";
 
 const router = Router();
 
-router.post("/login", validate(loginSchema), login);
-router.post("/register", validate(registerSchema), register);
+router.post("/login", login);
+router.post("/register", register);
+// direct reset (no email link)
+router.post("/reset-password", resetPassword);
 
 export default router;

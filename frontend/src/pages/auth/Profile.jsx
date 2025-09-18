@@ -30,7 +30,6 @@ export default function Profile() {
     }, 2200);
   };
 
-  // small CSS helpers (dark inputs + hide stray empty buttons)
   const LocalCss = () => (
     <style>{`
       button:empty { display:none; }
@@ -62,39 +61,58 @@ export default function Profile() {
       }
     };
     load();
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [userId]);
 
   const onSubmit = async (e) => {
     e.preventDefault();
     if (!userId) return;
-    if (form.password && form.password !== form.passwordConfirm) {
-      return toast("Passwords do not match", true);
-    }
 
-    const payload = {
-      name: form.name?.trim(),
-      email: form.email?.trim(),
-      phone: form.phone?.trim() || undefined,
-    };
-    if (form.password) payload.password = form.password;
+    // 1) Validate password pair (if provided)
+    const wantsPasswordChange = Boolean(form.password);
+    if (wantsPasswordChange) {
+      if (form.password !== form.passwordConfirm) {
+        return toast("Passwords do not match", true);
+      }
+      if (form.password.length < 8) {
+        return toast("Password must be at least 8 characters", true);
+      }
+    }
 
     setSaving(true);
     try {
-      const { data } = await api.patch(`/users/${userId}`, payload);
+      // 2) Update profile fields (no password here)
+      const profilePayload = {
+        name: form.name?.trim(),
+        email: form.email?.trim(),
+        phone: form.phone?.trim() || undefined,
+      };
 
+      const { data: updated } = await api.patch(`/users/${userId}`, profilePayload);
+
+      // keep AuthContext fresh
       if (typeof setUser === "function") {
         setUser((u) => ({
           ...u,
-          ...payload,
-          ...data, // trust backend canonical fields if sent
+          ...profilePayload,
+          ...updated,
         }));
       }
 
+      // 3) If password was requested, call /auth/reset-password with email + new pass
+      if (wantsPasswordChange) {
+        const emailForReset = (updated?.email || profilePayload.email || user?.email || "").trim();
+        await api.post(`/auth/reset-password`, {
+          email: emailForReset,
+          password: form.password,
+        });
+      }
+
+      // Clear local password fields
       setForm((f) => ({ ...f, password: "", passwordConfirm: "" }));
-      toast("Profile updated");
+
+      // Success message
+      toast(wantsPasswordChange ? "Profile & password updated" : "Profile updated");
     } catch (e) {
       const msg =
         e?.response?.data?.message ||
@@ -115,31 +133,22 @@ export default function Profile() {
   return (
     <AppLayout>
       <LocalCss />
-
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-white">Profile</h2>
       </div>
 
       {(ok || err) && (
         <div className="mt-3">
-          {ok && (
-            <span className="rounded bg-green-100 px-3 py-1 text-sm text-green-700">{ok}</span>
-          )}
-          {err && (
-            <span className="rounded bg-red-100 px-3 py-1 text-sm text-red-700">{err}</span>
-          )}
+          {ok && <span className="rounded bg-green-100 px-3 py-1 text-sm text-green-700">{ok}</span>}
+          {err && <span className="rounded bg-red-100 px-3 py-1 text-sm text-red-700">{err}</span>}
         </div>
       )}
 
       {loading ? (
-        <div className="mt-6 glass rounded-2xl p-6 text-sm text-white/80">
-          Loading…
-        </div>
+        <div className="mt-6 glass rounded-2xl p-6 text-sm text-white/80">Loading…</div>
       ) : (
-        <form
-          onSubmit={onSubmit}
-          className="mt-6 max-w-xl space-y-4 rounded-2xl glass p-5 text-white"
-        >
+        <form onSubmit={onSubmit} className="mt-6 max-w-xl space-y-4 rounded-2xl glass p-5 text-white">
+          {/* (unchanged) inputs for name/email/phone/passwords */}
           <label className="block">
             <span className="mb-1 block text-sm">Full name</span>
             <input
@@ -202,9 +211,7 @@ export default function Profile() {
             <Button
               type="button"
               variant="secondary"
-              onClick={() =>
-                setForm((f) => ({ ...f, password: "", passwordConfirm: "" }))
-              }
+              onClick={() => setForm((f) => ({ ...f, password: "", passwordConfirm: "" }))}
             >
               Clear password
             </Button>

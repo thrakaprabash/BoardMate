@@ -16,6 +16,7 @@ import Login from './pages/auth/Login'
 import Register from './pages/auth/Register'
 import NotFound from './pages/NotFound'
 import Profile from "./pages/auth/Profile"
+import ForgotPassword from './pages/auth/ForgetPassword'
 // Lists
 import BookingsList from "./pages/bookings/BookingsList"
 import PaymentsList from "./pages/finance/PaymentsList"
@@ -48,6 +49,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/login" />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
         
         {/* All authenticated routes */}
         <Route element={<ProtectedRoute />}>
