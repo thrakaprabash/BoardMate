@@ -9,9 +9,9 @@ const rolePathMap = {
   inventory_manager: "/dashboards/inventory",
   hostel_owner: "/dashboards/hostel",
   room_manager: "/dashboards/rooms",
-  booking_manager: "/dashboards/bookings",
+  
   maintenance_manager: "/dashboards/maintenance",
-  doctor: "/dashboards/doctor",
+  
 };
 
 export default function Register() {
@@ -128,9 +128,8 @@ export default function Register() {
             <option value="inventory_manager">Inventory Manager</option>
             <option value="hostel_owner">Hostel Owner</option>
             <option value="room_manager">Room Manager</option>
-            <option value="booking_manager">Booking Manager</option>
             <option value="maintenance_manager">Maintenance Manager</option>
-            <option value="doctor">Doctor</option>
+            
           </select>
 
           {/* chevron */}
