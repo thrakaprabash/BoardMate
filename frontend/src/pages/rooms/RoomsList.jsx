@@ -1,3 +1,4 @@
+// frontend/src/pages/RoomsList.jsx
 import { useEffect, useMemo, useState } from "react"
 import AppLayout from "../../layouts/AppLayout"
 import Section from "../../components/Section"
@@ -133,16 +134,83 @@ export default function RoomsList() {
     }
   }
 
+  // ---------- PDF Export ----------
+  const exportPdf = async () => {
+    try {
+      const { jsPDF } = await import("jspdf")
+      const autoTable = (await import("jspdf-autotable")).default
+
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" })
+      const now = new Date()
+      doc.setFontSize(16)
+      doc.text("Rooms List", 40, 40)
+      doc.setFontSize(10)
+      doc.text(`Generated: ${now.toLocaleString()}`, 40, 58)
+
+      const head = [["Hostel", "Type", "Capacity", "Rent (LKR)", "Available"]]
+      const body = rooms.map(r => [
+        hostelNameById.get(r.hostel_id) || `— ${idTail(r.hostel_id)}`,
+        r.type || "",
+        String(r.capacity ?? ""),
+        `LKR ${r.rent ?? 0}`,
+        r.availability_status ? "Yes" : "No",
+      ])
+
+      autoTable(doc, {
+        head,
+        body,
+        startY: 72,
+        styles: { fontSize: 10, cellPadding: 6 },
+        headStyles: { fillColor: [20, 184, 166] }, // uses theme-ish teal; remove if you want pure b/w
+        columnStyles: {
+          0: { cellWidth: 220 },
+          1: { cellWidth: 160 },
+          2: { cellWidth: 100, halign: "right" },
+          3: { cellWidth: 140, halign: "right" },
+          4: { cellWidth: 110, halign: "center" },
+        },
+        didDrawPage: (d) => {
+          // footer
+          const pageSize = doc.internal.pageSize
+          const pageHeight = pageSize.height || pageSize.getHeight()
+          doc.setFontSize(9)
+          doc.text(
+            `Total rooms: ${rooms.length}`,
+            40,
+            pageHeight - 24
+          )
+          doc.text(
+            `Page ${doc.getNumberOfPages()}`,
+            pageSize.width - 80,
+            pageHeight - 24
+          )
+        },
+      })
+
+      const dateStr = now.toISOString().slice(0, 10)
+      doc.save(`rooms-list-${dateStr}.pdf`)
+    } catch (e) {
+      toast("PDF export failed. Check console/logs.", true)
+      console.error(e)
+    }
+  }
+
   return (
     <AppLayout>
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-white/90">Rooms</h2>
-        <button
-          onClick={() => setShowCreate(true)}
-          className={btnPrimary}
-        >
-          Add room
-        </button>
+
+        <div className="flex items-center gap-2">
+          <button onClick={exportPdf} className={btnGhost}>
+            Export PDF
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className={btnPrimary}
+          >
+            Add room
+          </button>
+        </div>
       </div>
 
       {(ok || err) && (

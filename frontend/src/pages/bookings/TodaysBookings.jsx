@@ -1,8 +1,11 @@
+// src/pages/.../TodaysBookings.jsx
 import { useEffect, useMemo, useState } from "react";
 import AppLayout from "../../layouts/AppLayout";
 import Section from "../../components/Section";
 import DataTable from "../../components/DataTable";
 import api from "../../services/api";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 // ---- helpers
 const getArr = (res) => res?.data?.data ?? res?.data?.items ?? res?.data ?? [];
@@ -241,6 +244,70 @@ export default function TodaysBookings() {
     },
   ];
 
+  // ------------------------ PDF Export (three sections) ------------------------
+  const exportPDF = () => {
+    const doc = new jsPDF();
+
+    // header
+    doc.setFontSize(16);
+    doc.text("Today’s Bookings", 14, 15);
+    doc.setFontSize(10);
+    doc.text(`Date: ${day}   •   Exported: ${new Date().toLocaleString()}`, 14, 22);
+
+    // helper to print a section (title + table)
+    const printSection = (title, rows) => {
+      // section title
+      const lastY = doc.lastAutoTable?.finalY || 28;
+      doc.setFontSize(12);
+      doc.text(title, 14, lastY + 8);
+
+      // table
+      const head = [["Student", "Room", "Start", "End", "Status"]];
+      const body = rows.map((r) => {
+        // ids can be object or string
+        const uid =
+          typeof r.user_id === "object" && r.user_id?._id
+            ? r.user_id._id
+            : r.user_id;
+        const rid =
+          typeof r.room_id === "object" && r.room_id?._id
+            ? r.room_id._id
+            : r.room_id;
+
+        const student = userLabelById.get(uid) || `User • ${idTail(uid)}`;
+        const room = roomLabelById.get(rid) || `Room • ${idTail(rid)}`;
+        return [
+          student,
+          room,
+          fmtD(r.start_date),
+          fmtD(r.end_date),
+          String(r.status ?? "—").replace("_", " "),
+        ];
+      });
+
+      autoTable(doc, {
+        startY: lastY + 12,
+        head,
+        body,
+        styles: { fontSize: 10, cellPadding: 2 },
+        headStyles: { fillColor: [17, 24, 39] },
+      });
+    };
+
+    printSection(`Check-ins (${stats.checkins})`, filtered.checkins);
+    printSection(`Staying Today (${stats.inStay})`, filtered.inStay);
+    printSection(`Check-outs (${stats.checkouts})`, filtered.checkouts);
+
+    // filename
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    doc.save(
+      `todays_bookings_${day}_${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+        d.getDate()
+      )}.pdf`
+    );
+  };
+
   return (
     <AppLayout>
       <div className="flex items-center justify-between">
@@ -257,6 +324,13 @@ export default function TodaysBookings() {
             className="rounded-lg bg-teal-500 px-3 py-2 text-sm font-medium text-slate-900 hover:bg-teal-400"
           >
             Refresh
+          </button>
+          <button
+            onClick={exportPDF}
+            className="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium text-white border border-white/10 hover:bg-slate-700"
+            title="Export all sections to PDF"
+          >
+            Export PDF
           </button>
         </div>
       </div>

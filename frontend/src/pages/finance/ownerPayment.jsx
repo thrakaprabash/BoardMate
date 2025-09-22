@@ -17,12 +17,33 @@ const ymdLocal = (d) => {
 const startOfMonthLocal = () => {
   const n = new Date(); return ymdLocal(new Date(n.getFullYear(), n.getMonth(), 1));
 };
-const fmtAmt = (n) => (n == null ? "--" : `LKR ${Number(n).toLocaleString()}`);
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : "--");
-
 const pickDate = (r) => r?.date || r?.createdAt || r?.paid_at || r?.timestamp;
 const pickOwner = (r) =>
   r?.owner || r?.owner_id || r?.hostel_owner || r?.ownerId || r?.ownerID;
+
+// --- refund-aware amount helpers ---
+const unicodeMinus = /\u2212/g; // handle “−”
+const looksRefund = (r = {}) => {
+  const s = `${r.status ?? ""} ${r.type ?? ""} ${r.method ?? ""}`.toLowerCase();
+  return s.includes("refund") || s.includes("chargeback");
+};
+const parseAmount = (raw, row) => {
+  if (raw == null) return 0;
+  const s = String(raw)
+    .replace(/lkr/gi, "")
+    .replace(unicodeMinus, "-")
+    .replace(/[,\s]/g, "");
+  let n = parseFloat(s);
+  if (!isFinite(n)) n = 0;
+  if (looksRefund(row) && n > 0) n = -n; // flip to negative for refunds
+  return n;
+};
+const fmtAmtSigned = (n) => {
+  const v = Number(n || 0);
+  const sign = v < 0 ? "-" : "";
+  return `${sign}LKR ${Math.abs(v).toLocaleString()}`;
+};
 
 function useLabelCache(path, picks) {
   const [map, setMap] = useState({});
@@ -73,6 +94,64 @@ function MethodBadge({ value }) {
     </span>
   );
 }
+
+// --- export helpers ---
+const makeCsv = (rows, headers) => {
+  const esc = (v) => {
+    const s = String(v ?? "");
+    const needs = /[",\n]/.test(s);
+    const inner = s.replace(/"/g, '""');
+    return needs ? `"${inner}"` : inner;
+  };
+  const head = headers.map((h) => esc(h.header)).join(",");
+  const body = rows.map((r) => headers.map((h) => esc(h.value(r))).join(",")).join("\n");
+  return head + "\n" + body;
+};
+
+const downloadBlob = (content, filename, type) => {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
+const openPrintHtml = (title, tableHtml, note = "") => {
+  const win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(`
+    <!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8"/>
+      <title>${title}</title>
+      <style>
+        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial; padding: 24px; }
+        h1 { font-size: 20px; margin: 0 0 12px; }
+        .meta { color:#555; font-size: 12px; margin-bottom: 16px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; font-size: 12px; }
+        th { background: #f3f4f6; text-align: left; }
+        tfoot td { font-weight: 600; }
+        .note { margin-top: 12px; color:#666; font-size: 11px; }
+        .neg { color: #b91c1c; }
+        @media print { a { display: none; } }
+      </style>
+    </head>
+    <body>
+      <h1>${title}</h1>
+      <div class="meta">Generated on ${new Date().toLocaleString()}</div>
+      ${tableHtml}
+      ${note ? `<div class="note">${note}</div>` : ""}
+      <script>window.onload = () => window.print();</script>
+    </body>
+    </html>
+  `);
+  win.document.close();
+};
 
 export default function OwnerPaymentsList() {
   const { user } = useAuth();
@@ -173,29 +252,53 @@ export default function OwnerPaymentsList() {
     });
   }, [rows, from, to, method, status, ownerId]);
 
+  // --- refund-aware totals ---
   const totals = useMemo(() => {
-    const t = filteredRows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const t = filteredRows.reduce((s, r) => s + parseAmount(r.amount, r), 0);
     return { count: filteredRows.length, amount: t };
   }, [filteredRows]);
 
+  // --- Export: CSV (signed numeric amount) ---
   const exportCSV = () => {
-    const header = ["date", "amount", "method", "status", "booking", "user"];
-    const data = filteredRows.map((r) => [
-      (pickDate(r) || "").slice(0, 10),
-      r.amount ?? "",
-      r.method ?? "",
-      r.status ?? "",
-      bookingLabel(r.booking_id),
-      userLabel(r.user_id),
-    ]);
-    const csv = [header, ...data].map((row) => row.map((x) => `"${String(x).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `owner_payments_${from}_to_${to}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const headers = [
+      { header: "date",   value: (r) => (pickDate(r) || "").slice(0, 10) },
+      { header: "amount", value: (r) => parseAmount(r.amount, r) }, // signed
+      { header: "method", value: (r) => r.method ?? "" },
+      { header: "status", value: (r) => r.status ?? "" },
+      { header: "booking", value: (r) => bookingLabel(r.booking_id) },
+      { header: "user", value: (r) => userLabel(r.user_id) },
+    ];
+    const csv = makeCsv(filteredRows, headers);
+    downloadBlob("\ufeff" + csv, `owner_payments_${from}_to_${to}.csv`, "text/csv;charset=utf-8;");
+  };
+
+  // --- Export: PDF / Printable view ---
+  const exportPDF = () => {
+    const headers = [
+      { header: "Date",   value: (r) => (pickDate(r) ? fmtDate(pickDate(r)) : "") },
+      { header: "Amount", value: (r) => fmtAmtSigned(parseAmount(r.amount, r)) },
+      { header: "Method", value: (r) => r.method ?? "" },
+      { header: "Status", value: (r) => r.status ?? "" },
+      { header: "Booking", value: (r) => bookingLabel(r.booking_id) },
+      { header: "User", value: (r) => userLabel(r.user_id) },
+    ];
+    const thead = `<tr>${headers.map((h) => `<th>${h.header}</th>`).join("")}</tr>`;
+    const tbody = filteredRows.map((r) => {
+      const amt = parseAmount(r.amount, r);
+      return `<tr>${headers.map((h) => {
+        const val = String(h.value(r) ?? "");
+        const isAmt = h.header === "Amount";
+        return `<td${isAmt && amt < 0 ? ' class="neg"' : ""}>${val}</td>`;
+      }).join("")}</tr>`;
+    }).join("");
+    const total = totals.amount;
+    const tfoot = `<tr>${[
+      `<td colspan="1"><strong>Total</strong></td>`,
+      `<td${total < 0 ? ' class="neg"' : ""}><strong>${fmtAmtSigned(total)}</strong></td>`,
+      ...Array(Math.max(0, headers.length - 2)).fill("<td></td>"),
+    ].join("")}</tr>`;
+    const tableHtml = `<table><thead>${thead}</thead><tbody>${tbody}</tbody><tfoot>${tfoot}</tfoot></table>`;
+    openPrintHtml("Owner Payments & Payouts", tableHtml, "Tip: In the print dialog, choose “Save as PDF”.");
   };
 
   return (
@@ -209,7 +312,14 @@ export default function OwnerPaymentsList() {
           >
             Export CSV
           </button>
-          <div>{totals.count} records • {fmtAmt(totals.amount)}</div>
+          <button
+            onClick={exportPDF}
+            className="rounded-lg border border-white/20 bg-white/10 backdrop-blur-sm px-3 py-1.5 text-white hover:bg-white/20"
+            title="Open printable view (Save as PDF)"
+          >
+            Export PDF
+          </button>
+          <div>{totals.count} records • {fmtAmtSigned(totals.amount)}</div>
         </div>
       </div>
 
@@ -221,63 +331,62 @@ export default function OwnerPaymentsList() {
       )}
 
       {/* Filters */}
-<form onSubmit={apply} className="mt-6 grid gap-3 md:grid-cols-5 text-white">
-  <div className="grid gap-1">
-    <label className="text-sm">From</label>
-    <input
-      type="date"
-      className="rounded border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
-      value={from}
-      onChange={(e) => setFrom(e.target.value)}
-    />
-  </div>
+      <form onSubmit={apply} className="mt-6 grid gap-3 md:grid-cols-5 text-white">
+        <div className="grid gap-1">
+          <label className="text-sm">From</label>
+          <input
+            type="date"
+            className="rounded border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+        </div>
 
-  <div className="grid gap-1">
-    <label className="text-sm">To</label>
-    <input
-      type="date"
-      className="rounded border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
-      value={to}
-      onChange={(e) => setTo(e.target.value)}
-    />
-  </div>
+        <div className="grid gap-1">
+          <label className="text-sm">To</label>
+          <input
+            type="date"
+            className="rounded border border-white/20 bg-white/10 px-3 py-2 text-white placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+        </div>
 
-  <div className="grid gap-1">
-    <label className="text-sm">Method</label>
-    <select
-      className="rounded border border-white/20 bg-white/10 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-      value={method}
-      onChange={(e) => setMethod(e.target.value)}
-    >
-      <option className="bg-gray-900 text-white" value="all">All</option>
-      <option className="bg-gray-900 text-white" value="cash">Cash</option>
-      <option className="bg-gray-900 text-white" value="bank">Bank</option>
-      <option className="bg-gray-900 text-white" value="card">Card</option>
-      <option className="bg-gray-900 text-white" value="payout">Payouts</option>
-    </select>
-  </div>
+        <div className="grid gap-1">
+          <label className="text-sm">Method</label>
+          <select
+            className="rounded border border-white/20 bg-white/10 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+            value={method}
+            onChange={(e) => setMethod(e.target.value)}
+          >
+            <option className="bg-gray-900 text-white" value="all">All</option>
+            <option className="bg-gray-900 text-white" value="cash">Cash</option>
+            <option className="bg-gray-900 text-white" value="bank">Bank</option>
+            <option className="bg-gray-900 text-white" value="card">Card</option>
+            <option className="bg-gray-900 text-white" value="payout">Payouts</option>
+          </select>
+        </div>
 
-  <div className="grid gap-1">
-    <label className="text-sm">Status</label>
-    <select
-      className="rounded border border-white/20 bg-white/10 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
-      value={status}
-      onChange={(e) => setStatus(e.target.value)}
-    >
-      <option className="bg-gray-900 text-white" value="all">All</option>
-      <option className="bg-gray-900 text-white" value="paid">Paid</option>
-      <option className="bg-gray-900 text-white" value="pending">Pending</option>
-      <option className="bg-gray-900 text-white" value="refunded">Refunded</option>
-    </select>
-  </div>
+        <div className="grid gap-1">
+          <label className="text-sm">Status</label>
+          <select
+            className="rounded border border-white/20 bg-white/10 px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+          >
+            <option className="bg-gray-900 text-white" value="all">All</option>
+            <option className="bg-gray-900 text-white" value="paid">Paid</option>
+            <option className="bg-gray-900 text-white" value="pending">Pending</option>
+            <option className="bg-gray-900 text-white" value="refunded">Refunded</option>
+          </select>
+        </div>
 
-  <div className="grid items-end">
-    <button className="rounded-lg bg-white/20 backdrop-blur-sm px-4 py-2 text-sm font-medium text-white hover:bg-white/30">
-      Apply
-    </button>
-  </div>
-</form>
-
+        <div className="grid items-end">
+          <button className="rounded-lg bg-white/20 backdrop-blur-sm px-4 py-2 text-sm font-medium text-white hover:bg-white/30">
+            Apply
+          </button>
+        </div>
+      </form>
 
       {usedEndpoint && (
         <div className="mt-3 text-xs text-gray-400">
@@ -298,7 +407,18 @@ export default function OwnerPaymentsList() {
           <DataTable
             columns={[
               { key: "date", header: "Date", render: (r) => fmtDate(pickDate(r)) },
-              { key: "amount", header: "Amount", render: (r) => fmtAmt(r.amount) },
+              {
+                key: "amount",
+                header: "Amount",
+                render: (r) => {
+                  const v = parseAmount(r.amount, r);
+                  return (
+                    <span className={v < 0 ? "text-red-400" : ""}>
+                      {fmtAmtSigned(v)}
+                    </span>
+                  );
+                },
+              },
               { key: "method", header: "Method", render: (r) => <MethodBadge value={r.method} /> },
               { key: "status", header: "Status", render: (r) => <StatusBadge value={r.status} /> },
               { key: "booking_id", header: "Booking", render: (r) => bookingLabel(r.booking_id) },

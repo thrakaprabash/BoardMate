@@ -5,6 +5,8 @@ import Section from "../../components/Section";
 import DataTable from "../../components/DataTable";
 import api from "../../services/api";
 import { useAuth } from "../../context/AuthContext";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 /* ----------------------------- small helpers ----------------------------- */
 const fmt = (d) => (d ? new Date(d).toLocaleDateString() : "—");
@@ -266,7 +268,7 @@ export default function OwnerBookingsList() {
 
   useEffect(() => setRows(scopedRows), [scopedRows]);
 
-  // render helpers
+  // render helpers (use existing caches)
   const renderHostel = (bk) => {
     const rid = pickRoomId(bk);
     const hid = pickHostelId(bk) || (rid && roomToHostel.get(rid));
@@ -398,6 +400,66 @@ export default function OwnerBookingsList() {
     );
   };
 
+  /* ----------------------------- PDF Export ----------------------------- */
+  const exportPDF = () => {
+    const doc = new jsPDF();
+
+    // Title + meta
+    const title =
+      role === "hostel_owner" ? "All Bookings (My Hostels)" : "My Bookings";
+    doc.setFontSize(16);
+    doc.text(title, 14, 15);
+
+    const printedAt = new Date().toLocaleString();
+    doc.setFontSize(10);
+    doc.text(`Exported: ${printedAt}`, 14, 22);
+
+    // Columns (respect role like the table)
+    const head = [
+      "Hostel",
+      "Room",
+      "Start",
+      "End",
+      "Status",
+      ...(role === "hostel_owner" ? ["Student"] : []),
+    ];
+
+    // Body uses the same formatters as the table (label caches + fmt)
+    const body = rows.map((r) => {
+      const t = [
+        renderHostel(r),
+        renderRoom(r),
+        fmt(r.start_date || r.startDate || r.start),
+        fmt(r.end_date || r.endDate || r.end),
+        String(r.status || "").replace("_", " "),
+      ];
+      if (role === "hostel_owner") t.push(renderStudent(r));
+      return t;
+    });
+
+    autoTable(doc, {
+      startY: 28,
+      head: [head],
+      body,
+      styles: { fontSize: 10, cellPadding: 2 },
+      headStyles: { fillColor: [17, 24, 39] }, // dark header
+      didParseCell: (data) => {
+        if (data.section === "body" && data.column.index === 4) {
+          data.cell.text = [String(data.cell.text?.[0] || "").replace("_", " ")];
+        }
+      },
+    });
+
+    // Filename with date
+    const y = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const fname = `bookings_${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(
+      y.getDate()
+    )}.pdf`;
+
+    doc.save(fname);
+  };
+
   return (
     <AppLayout>
       <LocalCss />
@@ -406,9 +468,14 @@ export default function OwnerBookingsList() {
         <h2 className="text-2xl font-semibold text-white">
           {role === "hostel_owner" ? "All Bookings (My Hostels)" : "My Bookings"}
         </h2>
-        <button onClick={load} className="btn-primary rounded px-4 py-2 text-sm">
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={exportPDF} className="btn-primary rounded px-4 py-2 text-sm">
+            Export PDF
+          </button>
+          <button onClick={load} className="btn-primary rounded px-4 py-2 text-sm">
+            Refresh
+          </button>
+        </div>
       </div>
 
       {ok && <div className="msg ok">{ok}</div>}
@@ -418,8 +485,8 @@ export default function OwnerBookingsList() {
         <Section title="All bookings" subtitle="Newest first">
           <DataTable
             columns={[
-              { key: "hostel_id", header: "Hostel", render: renderHostel },
-              { key: "room_id", header: "Room", render: renderRoom },
+              { key: "hostel_id", header: "Hostel", render: (r) => renderHostel(r) },
+              { key: "room_id", header: "Room", render: (r) => renderRoom(r) },
               {
                 key: "start_date",
                 header: "Start",
@@ -430,12 +497,11 @@ export default function OwnerBookingsList() {
                 header: "End",
                 render: (r) => fmt(r.end_date || r.endDate || r.end),
               },
-              { key: "status", header: "Status", render: renderStatus },
+              { key: "status", header: "Status", render: (r) => renderStatus(r) },
               {
                 key: "user_id",
                 header: role === "hostel_owner" ? "Student" : undefined,
-                render: (r) =>
-                  role === "hostel_owner" ? renderStudent(r) : undefined,
+                render: (r) => (role === "hostel_owner" ? renderStudent(r) : undefined),
               },
             ]}
             rows={rows}
