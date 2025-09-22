@@ -5,6 +5,8 @@ import Section from "../../components/Section"
 import DataTable from "../../components/DataTable"
 import StatCard from "../../components/StatCard"
 import api from "../../services/api"
+import { jsPDF } from 'jspdf'
+import 'jspdf-autotable'
 
 const getArr = (res) => res?.data?.data ?? res?.data?.items ?? res?.data ?? []
 const badge = (t, cls) => (
@@ -142,12 +144,167 @@ export default function InventoryReports() {
     a.click()
     URL.revokeObjectURL(url)
   }
+  
+  const generatePDF = () => {
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      
+      // Add title
+      doc.setFontSize(20);
+      doc.setTextColor(40, 40, 40);
+      doc.text("Inventory Reports", pageWidth / 2, 20, { align: 'center' });
+      doc.setDrawColor(200, 200, 200);
+      doc.line(14, 25, pageWidth - 14, 25);
+      
+      // Add summary statistics
+      doc.setFontSize(14);
+      doc.text("Summary Statistics", 14, 35);
+      
+      const summaryData = [
+        ["Total Items:", kpi.total.toString()],
+        ["Total Quantity:", kpi.qtyTotal.toString()],
+        ["Low Stock Items:", kpi.low.toString()],
+        ["Out of Stock Items:", kpi.out.toString()]
+      ];
+      
+      // Manual table creation instead of using autoTable
+      let y = 40;
+      doc.setFontSize(10);
+      
+      summaryData.forEach((row, i) => {
+        doc.setFont(undefined, 'bold');
+        doc.text(row[0], 14, y + (i * 8));
+        doc.setFont(undefined, 'normal');
+        doc.text(row[1], 60, y + (i * 8));
+      });
+      
+      // Add items by status
+      y = y + (summaryData.length * 8) + 15;
+      doc.setFontSize(14);
+      doc.text("Items by Status", 14, y);
+      y += 10;
+      
+      // Manual table for status
+      doc.setFontSize(10);
+      doc.setDrawColor(80, 80, 80);
+      
+      // Header
+      doc.setFillColor(80, 80, 80);
+      doc.rect(14, y, 80, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.text("Status", 16, y + 6);
+      doc.text("Count", 60, y + 6);
+      doc.setTextColor(40, 40, 40);
+      y += 8;
+      
+      // Rows
+      byStatus.forEach((item, i) => {
+        if (i % 2 === 0) {
+          doc.setFillColor(240, 240, 240);
+          doc.rect(14, y, 80, 8, 'F');
+        }
+        doc.text(item[0] || '—', 16, y + 6);
+        doc.text(item[1].toString(), 60, y + 6);
+        y += 8;
+      });
+      
+      // Add quantity by hostel
+      y += 15;
+      doc.setFontSize(14);
+      doc.text("Quantity by Hostel", 14, y);
+      y += 10;
+      
+      // Manual table for hostels
+      doc.setFontSize(10);
+      
+      // Header
+      doc.setFillColor(80, 80, 80);
+      doc.rect(14, y, 120, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.text("Hostel", 16, y + 6);
+      doc.text("Total Quantity", 90, y + 6);
+      doc.setTextColor(40, 40, 40);
+      y += 8;
+      
+      // Rows (limit to avoid overflow)
+      const maxHostels = Math.min(byHostel.length, 10);
+      for (let i = 0; i < maxHostels; i++) {
+        if (i % 2 === 0) {
+          doc.setFillColor(240, 240, 240);
+          doc.rect(14, y, 120, 8, 'F');
+        }
+        doc.text(byHostel[i][0] || '—', 16, y + 6);
+        doc.text(byHostel[i][1].toString(), 90, y + 6);
+        y += 8;
+      }
+      
+      // Add critical items section
+      y += 15;
+      doc.setFontSize(14);
+      doc.text("Critical Items (Lowest Stock Ratio)", 14, y);
+      y += 10;
+      
+      // Manual table for critical items
+      doc.setFontSize(10);
+      
+      // Header
+      doc.setFillColor(80, 80, 80);
+      doc.rect(14, y, 170, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.text("Item", 16, y + 6);
+      doc.text("Qty", 80, y + 6);
+      doc.text("Min", 100, y + 6);
+      doc.text("Status", 120, y + 6);
+      doc.text("Hostel", 150, y + 6);
+      doc.setTextColor(40, 40, 40);
+      y += 8;
+      
+      // Rows (limit to avoid overflow)
+      const maxItems = Math.min(worst.length, 8);
+      for (let i = 0; i < maxItems; i++) {
+        const item = worst[i];
+        const hostel = item.hostel_id ? hostels.find(h => h._id === item.hostel_id) : null;
+        
+        if (i % 2 === 0) {
+          doc.setFillColor(240, 240, 240);
+          doc.rect(14, y, 170, 8, 'F');
+        }
+        
+        doc.text(item.name || '—', 16, y + 6);
+        doc.text((item.quantity || 0).toString(), 80, y + 6);
+        doc.text((item.min_level || 0).toString(), 100, y + 6);
+        doc.text(item.status || '—', 120, y + 6);
+        doc.text(hostel ? hostelLabel(hostel) : '—', 150, y + 6);
+        
+        y += 8;
+      }
+      
+      // Add footer with date
+      const now = new Date();
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Generated on ${now.toLocaleDateString()} at ${now.toLocaleTimeString()}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+      
+      // Save the PDF
+      doc.save("inventory_report.pdf");
+    } catch (error) {
+      console.error("Error generating PDF:", error);
+      alert("Failed to generate PDF. Please check the console for details.");
+    }
+  }
 
   return (
     <AppLayout>
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-semibold text-white">Inventory Reports</h2>
         <div className="flex gap-2">
+          <button
+            onClick={generatePDF}
+            className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
+          >
+            Export PDF
+          </button>
           <button
             onClick={exportSummary}
             className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-white hover:bg-white/20"
