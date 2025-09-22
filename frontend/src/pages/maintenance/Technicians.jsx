@@ -9,6 +9,12 @@ import api from "../../services/api";
 const getArr = (res) => res?.data?.items ?? res?.data?.data ?? res?.data ?? [];
 const fdt = (d) => (d ? new Date(d).toLocaleString() : "—");
 
+// Email & phone regex
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// allow digits only, 10–15 digits (international-friendly; adjust if you prefer strict 10)
+const phoneDigitsOnly = (s) => s.replace(/\D/g, "");
+const phoneRegex = /^\d{10,15}$/;
+
 // Simple glass modal used for create/edit
 function GlassModal({ open, title, onClose, children }) {
   if (!open) return null;
@@ -91,13 +97,33 @@ export default function Technicians() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---------- Validation ----------
+  const validateFields = (email, phone) => {
+    if (email && !emailRegex.test(email)) {
+      toast("Invalid email format", true);
+      return false;
+    }
+    if (phone) {
+      const digits = phoneDigitsOnly(phone);
+      if (!phoneRegex.test(digits)) {
+        toast("Phone must be 10–15 digits", true);
+        return false;
+      }
+    }
+    return true;
+  };
+
   const onCreate = async (e) => {
     e.preventDefault();
+    const email = cForm.email.trim();
+    const phone = phoneDigitsOnly(cForm.phone.trim());
+    if (!validateFields(email, phone)) return;
+
     try {
       const payload = {
         name: cForm.name.trim(),
-        email: cForm.email.trim() || undefined,
-        phone: cForm.phone.trim() || undefined,
+        email: email || undefined,
+        phone: phone || undefined,
         skills: cForm.skills
           .split(",")
           .map((s) => s.trim())
@@ -129,11 +155,15 @@ export default function Technicians() {
 
   const onUpdate = async (e) => {
     e.preventDefault();
+    const email = eForm.email.trim();
+    const phone = phoneDigitsOnly(eForm.phone.trim());
+    if (!validateFields(email, phone)) return;
+
     try {
       const payload = {
         name: eForm.name.trim(),
-        email: eForm.email.trim() || undefined,
-        phone: eForm.phone.trim() || undefined,
+        email: email || undefined,
+        phone: phone || undefined,
         skills: eForm.skills
           .split(",")
           .map((s) => s.trim())
@@ -417,6 +447,7 @@ export default function Technicians() {
               className="w-full rounded border border-white/20 bg-white/10 px-3 py-2 text-white"
               value={cForm.email}
               onChange={(e) => setCForm((f) => ({ ...f, email: e.target.value }))}
+              placeholder="name@example.com"
             />
           </label>
           <label className="block">
@@ -424,7 +455,12 @@ export default function Technicians() {
             <input
               className="w-full rounded border border-white/20 bg-white/10 px-3 py-2 text-white"
               value={cForm.phone}
-              onChange={(e) => setCForm((f) => ({ ...f, phone: e.target.value }))}
+              onChange={(e) =>
+                setCForm((f) => ({ ...f, phone: phoneDigitsOnly(e.target.value) }))
+              }
+              inputMode="numeric"
+              placeholder="07XXXXXXXX"
+              maxLength={15}
             />
           </label>
           <label className="md:col-span-2 block">
@@ -472,6 +508,7 @@ export default function Technicians() {
               className="w-full rounded border border-white/20 bg-white/10 px-3 py-2 text-white"
               value={eForm.email}
               onChange={(e) => setEForm((f) => ({ ...f, email: e.target.value }))}
+              placeholder="name@example.com"
             />
           </label>
           <label className="block">
@@ -479,7 +516,12 @@ export default function Technicians() {
             <input
               className="w-full rounded border border-white/20 bg-white/10 px-3 py-2 text-white"
               value={eForm.phone}
-              onChange={(e) => setEForm((f) => ({ ...f, phone: e.target.value }))}
+              onChange={(e) =>
+                setEForm((f) => ({ ...f, phone: phoneDigitsOnly(e.target.value) }))
+              }
+              inputMode="numeric"
+              placeholder="07XXXXXXXX"
+              maxLength={15}
             />
           </label>
           <label className="md:col-span-2 block">

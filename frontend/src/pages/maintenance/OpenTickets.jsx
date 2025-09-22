@@ -6,6 +6,9 @@ import DataTable from "../../components/DataTable";
 import StatCard from "../../components/StatCard";
 import Button from "../../components/Button";
 import api from "../../services/api";
+import jsPDF from "jspdf";
+// ✅ FIX: import the function and call it, don't rely on doc.autoTable
+import autoTable from "jspdf-autotable";
 
 // helpers
 const getArr = (res) => res?.data?.items ?? res?.data?.data ?? res?.data ?? [];
@@ -160,7 +163,9 @@ export default function OpenTickets() {
     if (!assignTech) return toast("Select a technician", true);
     const orig = assignTicket;
     setTickets((prev) =>
-      prev.map((r) => (r._id === orig._id ? { ...r, assignedTo: { ...(r.assignedTo || {}), _id: assignTech } } : r))
+      prev.map((r) =>
+        r._id === orig._id ? { ...r, assignedTo: { ...(r.assignedTo || {}), _id: assignTech } } : r
+      )
     );
     try {
       await api.patch(`/maintenance/${orig._id}/assign`, { assignedTo: assignTech });
@@ -183,7 +188,11 @@ export default function OpenTickets() {
       ),
     },
     { key: "hostel", header: "Hostel", render: (t) => hostelName.get(t.hostel?._id || t.hostel) || "—" },
-    { key: "room", header: "Room", render: (t) => roomName.get(t.room?._id || t.room) || (t.room?._id || t.room || "—") },
+    {
+      key: "room",
+      header: "Room",
+      render: (t) => roomName.get(t.room?._id || t.room) || (t.room?._id || t.room || "—"),
+    },
     { key: "priority", header: "Priority", render: (t) => badge(String(t.priority || "—"), toneForPrio(t.priority)) },
     { key: "assignee", header: "Assignee", render: (t) => assigneeText(t) },
     { key: "created", header: "Created", render: (t) => fdt(t.createdAt) },
@@ -209,6 +218,50 @@ export default function OpenTickets() {
     },
   ];
 
+  // --- PDF export ---
+  const exportPDF = () => {
+    const doc = new jsPDF();
+
+    // Header / Title
+    doc.setFontSize(16);
+    doc.text("Open Tickets Report", 14, 20);
+
+    // Summary line
+    doc.setFontSize(11);
+    const total = tickets.length;
+    const urgent = urgentCount;
+    const unassigned = tickets.filter((t) => !t.assignedTo).length;
+    doc.text(`Total: ${total}   Urgent: ${urgent}   Unassigned: ${unassigned}`, 14, 27);
+
+    // Table data
+    const head = [["Issue", "Hostel", "Room", "Priority", "Assignee", "Created"]];
+    const body = tickets.map((t) => [
+      t.issueDetails || "—",
+      hostelName.get(t.hostel?._id || t.hostel) || "—",
+      roomName.get(t.room?._id || t.room) || "—",
+      String(t.priority || "—"),
+      assigneeText(t),
+      fdt(t.createdAt),
+    ]);
+
+    // ✅ FIX: call autoTable(doc, {...})
+    autoTable(doc, {
+      startY: 32,
+      head,
+      body,
+      styles: { fontSize: 9 },
+      theme: "grid",
+      headStyles: { fillColor: [15, 23, 42] }, // slate-900-ish
+      didDrawPage: (d) => {
+        const str = `Generated: ${new Date().toLocaleString()}  •  Page ${doc.internal.getNumberOfPages()}`;
+        doc.setFontSize(9);
+        doc.text(str, d.settings.margin.left, doc.internal.pageSize.getHeight() - 8);
+      },
+    });
+
+    doc.save("open-tickets.pdf");
+  };
+
   return (
     <AppLayout>
       <SelectFix />
@@ -232,6 +285,9 @@ export default function OpenTickets() {
           >
             Clear
           </Button>
+          <Button variant="secondary" onClick={exportPDF}>
+            Download PDF
+          </Button>
         </div>
       </div>
 
@@ -242,14 +298,14 @@ export default function OpenTickets() {
         </div>
       )}
 
-      {/* stats row — slightly elevated and spaced from next block */}
+      {/* stats row */}
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 relative z-[1]">
         <StatCard title="Open tickets" value={tickets.length} />
         <StatCard title="Urgent" value={urgentCount} />
         <StatCard title="Unassigned" value={tickets.filter((t) => !t.assignedTo).length} />
       </div>
 
-      {/* section below — extra top margin + lower z to avoid visual blending */}
+      {/* section */}
       <Section title="Open tickets" className="mt-8 relative z-0">
         <div className="mb-4 grid gap-3 md:grid-cols-4">
           <select

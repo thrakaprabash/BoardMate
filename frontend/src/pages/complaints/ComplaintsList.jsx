@@ -243,9 +243,121 @@ export default function ComplaintsList() {
     }
   }
 
+  // ---- Export PDF ----
+  const exportPdf = async () => {
+    // shape data for export
+    const headers = ["Room", "Issue", "Status", "Assigned to", "Created"]
+    const body = (rows || []).map((r) => [
+      makeRoomLabel(r, []),
+      r.description || r.issueDetails || "—",
+      String(r.status || "—"),
+      userLabel(r.assignedTo),
+      fdt(r.createdAt || r.date),
+    ])
+
+    try {
+      // try with jsPDF + autoTable
+      const { jsPDF } = await import("jspdf")
+      const autoTable = (await import("jspdf-autotable")).default
+
+      const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" })
+      const marginX = 40
+
+      // Title
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(16)
+      doc.text("My Complaints", marginX, 48)
+
+      // Subtitle (date & count)
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(10)
+      const sub = `Generated on ${new Date().toLocaleString()} • ${rows.length} item(s)`
+      doc.text(sub, marginX, 66)
+
+      // Table
+      autoTable(doc, {
+        head: [headers],
+        body,
+        startY: 84,
+        styles: { fontSize: 9, cellPadding: 6, overflow: "linebreak" },
+        headStyles: { fillColor: [15, 23, 42] }, // slate-900-ish
+        alternateRowStyles: { fillColor: [245, 247, 250] },
+        margin: { left: marginX, right: marginX },
+        columnStyles: {
+          0: { cellWidth: 90 },  // Room
+          1: { cellWidth: 180 }, // Issue
+          2: { cellWidth: 80 },  // Status
+          3: { cellWidth: 120 }, // Assigned to
+          4: { cellWidth: 90 },  // Created
+        },
+      })
+
+      doc.save("complaints.pdf")
+    } catch (e) {
+      // graceful fallback: open printable window
+      const html = `
+        <html>
+          <head>
+            <title>My Complaints</title>
+            <meta charset="utf-8" />
+            <style>
+              body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; padding: 24px; }
+              h1 { margin: 0 0 8px; font-size: 18px; }
+              .muted { color: #555; margin-bottom: 16px; font-size: 12px; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { border: 1px solid #ddd; padding: 8px; font-size: 12px; vertical-align: top; }
+              th { background: #111827; color: white; }
+              tr:nth-child(even) td { background: #f8fafc; }
+              @media print { @page { size: A4 portrait; margin: 12mm; } }
+            </style>
+          </head>
+          <body>
+            <h1>My Complaints</h1>
+            <div class="muted">Generated on ${new Date().toLocaleString()} • ${rows.length} item(s)</div>
+            <table>
+              <thead>
+                <tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr>
+              </thead>
+              <tbody>
+                ${body
+                  .map(
+                    (cells) =>
+                      `<tr>${cells.map((c) => `<td>${String(c ?? "—")
+                        .replace(/&/g,"&amp;")
+                        .replace(/</g,"&lt;")
+                        .replace(/>/g,"&gt;")
+                      }</td>`).join("")}</tr>`
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+            <script>window.onload = () => { window.print(); };</script>
+          </body>
+        </html>
+      `
+      const w = window.open("", "_blank")
+      if (w) {
+        w.document.open()
+        w.document.write(html)
+        w.document.close()
+      } else {
+        alert("Popup blocked. Please allow popups to export/print.")
+      }
+    }
+  }
+
   return (
     <AppLayout>
-      <h2 className="text-2xl font-semibold text-white/90">My Complaints</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-2xl font-semibold text-white/90">My Complaints</h2>
+
+        {/* PDF button */}
+        <div className="flex items-center gap-2">
+          <button className={iconBtn} onClick={exportPdf} title="Export PDF">
+            📄 <span className="hidden sm:inline">Export PDF</span>
+          </button>
+        </div>
+      </div>
 
       {(msg || err) && (
         <div className="mt-3">
