@@ -148,10 +148,11 @@ export default function RoomManagerDashboard() {
     return m;
   }, [rooms, hostelNameById]);
 
-  // stats
+  // stats (FIXED: "available" uses availability_status AND not currently occupied)
   const stats = useMemo(() => {
     const today = todayYMD();
-    // Get rooms with active bookings (confirmed or checked_in, overlapping today)
+
+    // rooms with active bookings (confirmed/checked_in) that overlap today
     const occupiedRoomIds = new Set(
       bookings
         .filter((b) => ["confirmed", "checked_in"].includes(b.status))
@@ -162,8 +163,11 @@ export default function RoomManagerDashboard() {
         })
         .map((b) => (typeof b.room_id === "object" && b.room_id?._id ? b.room_id._id : b.room_id))
     );
+
     const occupied = occupiedRoomIds.size;
-    const available = rooms.length - occupied;
+    const available = rooms.filter(
+      (r) => !!r.availability_status && !occupiedRoomIds.has(r._id)
+    ).length;
     const pending = bookings.filter((b) => b.status === "pending").length;
     const checkinsToday = bookings.filter((b) => {
       const checkinDate = new Date(b.start_date).toISOString().slice(0, 10);
@@ -175,11 +179,23 @@ export default function RoomManagerDashboard() {
 
   // ---- room actions
   const onToggleAvailability = async (room) => {
+    const next = !room.availability_status;
+
+    // optimistic UI so the stat card updates instantly
+    setRooms((prev) =>
+      prev.map((r) => (r._id === room._id ? { ...r, availability_status: next } : r))
+    );
+
     try {
-      await api.patch(`/rooms/${room._id}/availability`, { availability_status: !room.availability_status });
+      await api.patch(`/rooms/${room._id}/availability`, { availability_status: next });
       toast("Availability updated");
+      // optional: ensure consistency with backend
       await refreshRooms();
     } catch (e) {
+      // revert on error
+      setRooms((prev) =>
+        prev.map((r) => (r._id === room._id ? { ...r, availability_status: !next } : r))
+      );
       toast(e?.response?.data?.message || "Failed to update room", true);
     }
   };
@@ -558,7 +574,7 @@ export default function RoomManagerDashboard() {
               checked={editRoom.availability_status}
               onChange={(e) => setEditRoom((f) => ({ ...f, availability_status: e.target.checked }))}
             />
-            <span className="text-sm">Available</span>
+          <span className="text-sm">Available</span>
           </label>
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setShowEditRoom(false)} className={btnGhost}>
