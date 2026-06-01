@@ -1,12 +1,96 @@
-# React + Vite
+# BoardMate — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+BoardMate is a hostel/boarding management system. This `frontend` contains the React + Vite single-page application used by students, hostel owners, and managers to handle bookings, complaints, maintenance, inventory, payments, notices and reports. The UI talks to the `Backend` (REST API) located in the sibling `Backend/` folder.
 
-Currently, two official plugins are available:
+## System overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Users & roles:** Student, Hostel Owner, Inventory Manager, Maintenance Manager, Room Manager, Technicians, Admin
+- **Core features:** Authentication, Bookings, Complaints, Maintenance requests, Inventory management, Payments/finance, Notices, Reports
+- **Tech stack (frontend):** React, Vite, Tailwind CSS, Axios
+- **API:** REST API served by `Backend/` (default base URL: `http://localhost:5000`)
 
-## Expanding the ESLint configuration
+## Prerequisites
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- Node.js 16+ and npm (or yarn)
+- Git (optional)
+- A running instance of the Backend (see below)
+
+## Frontend — Install
+
+1. Open a terminal and go to the frontend folder:
+
+```
+cd frontend
+```
+
+2. Install dependencies:
+
+```
+npm install
+```
+
+3. Create environment variables (optional):
+
+Copy `.env.example` to `.env` if present, or create a `.env` with at least:
+
+```
+VITE_API_BASE_URL=http://localhost:5000/api
+```
+
+The frontend uses the `VITE_API_BASE_URL` environment variable to reach the backend API.
+
+## Frontend — Run (development)
+
+Start the dev server with hot reload:
+
+```
+npm run dev
+```
+
+The app will be available at the URL printed by Vite (typically `http://localhost:5173`).
+
+## Frontend — Build & Preview (production)
+
+Build a production bundle:
+
+```
+npm run build
+```
+
+Preview the production build locally:
+
+```
+npm run preview
+```
+
+## Backend — Quick start (local)
+
+The backend lives in the `Backend/` folder. To run it locally:
+
+```
+cd ../Backend
+npm install
+npm run dev
+```
+
+The backend `dev` script runs the TypeScript server (via `ts-node-dev`). By default it listens on the port defined in the backend `.env` (commonly `5000`).
+
+## Run the full system
+
+1. Start the Backend (`Backend/`): `npm run dev`.
+2. Start the Frontend (`frontend/`): `npm run dev`.
+3. Open the frontend URL shown by Vite and interact with the app. If you get CORS or API errors, confirm `VITE_API_BASE_URL` matches the backend address.
+
+## Troubleshooting
+
+- If the UI cannot reach the API, check `VITE_API_BASE_URL` and backend logs.
+- If ports conflict, change the Vite port via `--port` or the backend port in its `.env`.
+- For linting: `npm run lint` (frontend).
+
+## Contributing
+
+See the root project's contribution guidelines. Keep UI changes isolated to the `frontend/src/` folder and coordinate API contract changes with the backend team.
+
+---
+
+If you want, I can also update the repository root `README.md` or add a `frontend/.env.example`. Want me to do that now?
