@@ -1,6 +1,37 @@
 @import "tailwindcss";
 
-/* ===== Night Dashboard helpers ===== */
+:root {
+  --app-bg: #f4f7fb;
+  --app-panel: rgba(255, 255, 255, 0.86);
+  --app-border: rgba(15, 23, 42, 0.12);
+  --app-text: #10203a;
+  --app-text-soft: #5a6b84;
+  --app-accent: #0f766e;
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --app-bg: #050816;
+  --app-panel: rgba(15, 23, 42, 0.68);
+  --app-border: rgba(255, 255, 255, 0.12);
+  --app-text: #f8fafc;
+  --app-text-soft: rgba(248, 250, 252, 0.72);
+  --app-accent: #2dd4bf;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, rgba(45, 212, 191, 0.06), transparent 35%),
+    linear-gradient(180deg, var(--app-bg) 0%, var(--app-bg) 100%);
+  color: var(--app-text);
+}
 
 /* 1) Hide accidental empty buttons (fixes tiny white rounded pills) */
 button:empty { display: none; }
@@ -16,3 +47,107 @@ select.dark-native optgroup {
 /* Improve focus + remove default inner padding border on FF */
 button::-moz-focus-inner { border: 0; padding: 0; }
 select.dark-native:focus { outline: none; }
+
+[data-theme="light"] .text-white,
+[data-theme="light"] .text-white\/90,
+[data-theme="light"] .text-white\/80,
+[data-theme="light"] .text-white\/70,
+[data-theme="light"] .text-white\/60,
+[data-theme="light"] .text-white\/50 {
+  color: var(--app-text) !important;
+}
+
+[data-theme="light"] .bg-white\/20,
+[data-theme="light"] .bg-white\/15,
+[data-theme="light"] .bg-white\/10,
+[data-theme="light"] .bg-white\/5,
+[data-theme="light"] .bg-slate-900\/80,
+[data-theme="light"] .bg-slate-900\/70,
+[data-theme="light"] .bg-slate-900\/40,
+[data-theme="light"] .bg-slate-900,
+[data-theme="light"] .bg-slate-800\/70,
+[data-theme="light"] .bg-slate-800 {
+  background-color: var(--app-panel) !important;
+}
+
+[data-theme="light"] .border-white\/25,
+[data-theme="light"] .border-white\/20,
+[data-theme="light"] .border-white\/15,
+[data-theme="light"] .border-white\/10 {
+  border-color: var(--app-border) !important;
+}
+
+[data-theme="light"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  background-color: rgba(255, 255, 255, 0.9);
+  color: var(--app-text);
+  border-color: var(--app-border);
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: var(--app-text-soft);
+}
+
+[data-theme="light"] select.dark-native,
+[data-theme="light"] select.dark-native option,
+[data-theme="light"] select.dark-native optgroup {
+  background-color: rgba(255, 255, 255, 0.96);
+  color: var(--app-text);
+}
+
+[data-theme="light"] input.input-dark,
+[data-theme="light"] textarea.input-dark,
+[data-theme="light"] .input-dark {
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--app-text);
+  border-color: var(--app-border);
+}
+
+[data-theme="light"] .btn-primary {
+  background: var(--app-text);
+  color: #ffffff;
+}
+
+[data-theme="light"] .btn-ghost {
+  border-color: var(--app-border);
+  background: transparent;
+  color: var(--app-text);
+}
+
+[data-theme="light"] .glass,
+[data-theme="light"] .chip,
+[data-theme="light"] .hero,
+[data-theme="light"] .tab--on {
+  border-color: var(--app-border);
+}
+
+[data-theme="light"] .glass {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(14px);
+}
+
+[data-theme="light"] .chip {
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--app-text);
+}
+
+[data-theme="light"] .table-dark thead {
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--app-text);
+}
+
+[data-theme="light"] .table-dark td,
+[data-theme="light"] .table-dark th {
+  border-color: var(--app-border);
+}
+
+[data-theme="light"] .select-dark option {
+  background: rgba(255, 255, 255, 0.98);
+  color: var(--app-text);
+}
+
+[data-theme="light"] .tab--on {
+  background: rgba(15, 23, 42, 0.08);
+}
