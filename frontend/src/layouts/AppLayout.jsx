@@ -4,7 +4,7 @@ import NightBackdrop from "./NightBackdrop";
 
 export default function AppLayout({ children }) {
   return (
-    <div className="relative min-h-screen text-white">
+    <div className="relative min-h-screen overflow-hidden bg-[color:var(--app-bg)] text-[color:var(--app-text)]">
       <NightBackdrop />
       <div className="relative z-10">
         <TopBar />

@@ -1,6 +1,9 @@
 import React, { useMemo } from "react";
+import { useTheme } from "../context/ThemeContext";
 
 export default function NightBackdrop() {
+  const { theme } = useTheme();
+  const isLight = theme === "light";
   const stars = useMemo(
     () =>
       Array.from({ length: 80 }, () => ({
@@ -11,6 +14,37 @@ export default function NightBackdrop() {
       })),
     []
   );
+
+  if (isLight) {
+    return (
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,#f7fbff_0%,#eef6ff_45%,#f8fafc_100%)]" />
+        <div className="absolute -left-8 top-8 h-64 w-64 rounded-full bg-sky-200/50 blur-3xl" />
+        <div className="absolute right-[-8%] top-0 h-72 w-72 rounded-full bg-amber-200/40 blur-3xl" />
+        <div className="absolute bottom-0 left-0 right-0 h-44 bg-[linear-gradient(180deg,rgba(255,255,255,0),rgba(226,232,240,.88))]" />
+
+        <svg className="absolute bottom-0 left-0 right-0 w-full opacity-90" viewBox="0 0 1440 300" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="mBackLight" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#dbeafe" />
+              <stop offset="100%" stopColor="#bfdbfe" />
+            </linearGradient>
+            <linearGradient id="mMidLight" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#bae6fd" />
+              <stop offset="100%" stopColor="#93c5fd" />
+            </linearGradient>
+            <linearGradient id="mFrontLight" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="#86efac" />
+              <stop offset="100%" stopColor="#22c55e" />
+            </linearGradient>
+          </defs>
+          <path fill="url(#mBackLight)" d="M0,210 L120,170 L260,220 L420,160 L560,210 L700,150 L840,210 L1000,170 L1140,210 L1280,180 L1440,210 L1440,300 L0,300 Z" />
+          <path fill="url(#mMidLight)" d="M0,230 L160,180 L300,220 L460,170 L640,220 L820,160 L1000,220 L1180,180 L1360,220 L1440,200 L1440,300 L0,300 Z" />
+          <path fill="url(#mFrontLight)" d="M0,260 L180,190 L320,240 L520,180 L740,230 L960,170 L1160,230 L1320,190 L1440,210 L1440,300 L0,300 Z" />
+        </svg>
+      </div>
+    );
+  }
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">

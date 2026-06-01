@@ -34,7 +34,9 @@ function NavItem({ to, label }) {
       className={({ isActive }) =>
         [
           "flex items-center gap-3 rounded-xl px-3 py-2 text-sm",
-          isActive ? "bg-white/20 text-white" : "text-white/80 hover:bg-white/10",
+          isActive
+            ? "bg-black/5 text-[color:var(--app-text)]"
+            : "text-[color:var(--app-text-soft)] hover:bg-black/5 hover:text-[color:var(--app-text)]",
         ].join(" ")
       }
     >
@@ -52,7 +54,7 @@ export default function Sidebar() {
 
   return (
     <aside className="hidden w-64 shrink-0 md:block">
-      <div className="sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto rounded-2xl border border-white/10 bg-slate-900/40 p-4 text-white shadow-sm backdrop-blur">
+      <div className="sticky top-16 max-h-[calc(100vh-4rem)] overflow-y-auto rounded-2xl border border-[color:var(--app-border)] bg-[color:var(--app-panel)] p-4 text-[color:var(--app-text)] shadow-sm backdrop-blur-xl">
         <nav className="space-y-1">
           {items.map((it) => (
             <NavItem key={it.to} to={it.to} label={it.label} />
